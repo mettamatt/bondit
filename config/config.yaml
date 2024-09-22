@@ -5,7 +5,7 @@
 # necessary for the proper functioning of the program.
 
 api:
-  fred_api_key: 3599848febf0c3819cf97f409ad27e77
+  fred_api_key: 5a530b5c6dfb0d427385b4ec11d39251
   # The API key for accessing the FRED (Federal Reserve Economic Data) API.
   # This key is required to fetch economic data from the FRED service.
   # Replace the placeholder value with your actual API key.
