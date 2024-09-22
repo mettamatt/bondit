@@ -1,5 +1,5 @@
 # Bondit
-config/settings.yaml
+config/config.yaml
 data/
 
 # Byte-compiled / optimized / DLL files
