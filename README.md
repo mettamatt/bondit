@@ -1,5 +1,7 @@
 # Bondit Portfolio Management Application
 
+![Bondit Logo](logo.png)
+
 ## Overview
 
 **Bondit** is a Python-based portfolio management tool designed to help long-term investors manage their bond allocations based on key economic indicators. By analyzing data from sources like the Federal Reserve Economic Data (FRED), Bondit adjusts investment allocations to optimize for wealth preservation, modest growth, and protection against inflation and other economic risks.
