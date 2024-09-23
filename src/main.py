@@ -18,7 +18,6 @@ from .utils import (
     initialize_data_storage_and_fetcher,
     initialize_logger,
     initialize_portfolio,
-    initialize_report_logger,
     load_configuration,
 )
 
@@ -43,10 +42,6 @@ def main() -> None:
     # Initialize the main application logger
     logger = initialize_logger()
     logger.info("Logger initialized.")
-
-    # Initialize a dedicated logger for rebalancing reports
-    report_logger = initialize_report_logger()
-    logger.debug("Report logger initialized.")
 
     # Define the fixed configuration file path
     config_path = "config/config.yaml"
@@ -89,8 +84,10 @@ def main() -> None:
 
     # Step 4: Generate and log the rebalancing report
     try:
-        report = decision_engine.generate_rebalancing_report()
-        report_logger.info("Rebalancing Report Generated:\n" + report)
+        # Save the rebalancing report and optionally view it
+        decision_engine.save_rebalancing_report(
+            view=True
+        )  # Set view=False if you don't want to open it automatically
         logger.info("Rebalancing report has been generated and logged.")
     except Exception as e:
         logger.error(f"Error generating or logging rebalancing report: {e}")

@@ -86,42 +86,6 @@ def initialize_logger(logger_name: str = "Bondit") -> logging.Logger:
     return logger
 
 
-def initialize_report_logger(
-    report_logger_name: str = "Bondit.RebalancingReport",
-    log_file: str = "rebalancing_report.log",
-) -> logging.Logger:
-    """
-    Initialize a dedicated logger for rebalancing reports.
-
-    This function sets up a separate logger to handle rebalancing reports, directing the logs
-    to a specified file. It ensures that multiple handlers are not added if the logger is
-    already configured.
-
-    Args:
-        report_logger_name (str, optional): The name of the report logger.
-                                            Defaults to "Bondit.RebalancingReport".
-        log_file (str, optional): The file path for the report log.
-                                  Defaults to "rebalancing_report.log".
-
-    Returns:
-        logging.Logger: Configured report logger instance.
-    """
-    report_logger = logging.getLogger(report_logger_name)
-    report_logger.setLevel(logging.INFO)  # Capture informational messages
-
-    if not report_logger.handlers:
-        # File handler for the rebalancing report
-        report_handler = logging.FileHandler(log_file)
-        report_handler.setLevel(logging.INFO)
-        report_formatter = logging.Formatter(
-            "%(asctime)s - %(levelname)s - %(message)s"
-        )
-        report_handler.setFormatter(report_formatter)
-        report_logger.addHandler(report_handler)
-
-    return report_logger
-
-
 def load_configuration(
     config_path: str, logger: logging.Logger, required_fields: List[str]
 ) -> Dict[str, Any]:

@@ -15,7 +15,9 @@ Classes:
 import datetime
 import logging
 import math
-from typing import Any, Dict, Optional
+import shutil
+import subprocess
+from typing import Any, Dict, List, Optional
 
 from .decision_rules.decision_rules import DecisionRules
 from .indicators import EconomicIndicator
@@ -34,9 +36,9 @@ class DecisionEngine:
         indicators (Dict[str, EconomicIndicator]): A dictionary of economic indicators used for analysis.
         portfolio (Portfolio): The investment portfolio to be managed and adjusted.
         rule_messages (Dict[str, List[str]]): Messages associated with each decision rule applied.
+        adjustments (List[Dict[str, Any]]): List of individual asset adjustments made.
         max_adjustment (float): Maximum percentage adjustment allowed for any operation.
         logger (logging.Logger): Logger instance for logging activities and debugging.
-        initializing (bool): Flag indicating whether the engine is in the initialization phase.
         baseline_allocations (Dict[str, float]): Strategic baseline allocations for portfolio assets.
         asset_risk_levels (Dict[str, float]): Risk levels assigned to each asset class.
         max_portfolio_risk (float): Maximum acceptable average risk level for the portfolio.
@@ -65,15 +67,14 @@ class DecisionEngine:
         """
         self.indicators: Dict[str, EconomicIndicator] = indicators
         self.portfolio: Portfolio = portfolio
-        self.rule_messages: Dict[str, list] = {}
+        self.rule_messages: Dict[str, List[str]] = {}
+        self.adjustments: List[Dict[str, Any]] = []
         self.max_adjustment: float = (
             10.0  # Maximum adjustment percentage for all operations
         )
         self.logger: logging.Logger = logger or logging.getLogger(
             "Bondit.DecisionEngine"
         )
-
-        self.initializing: bool = False  # Flag to indicate initialization phase
 
         # Define strategic baseline allocations (total should sum to 100%)
         self.baseline_allocations: Dict[str, float] = {
@@ -111,9 +112,9 @@ class DecisionEngine:
         # Initialize analysis results
         self.analysis_results: Dict[str, Dict[str, Any]] = {}
         self.logger.debug("Initializing DecisionEngine.")
-        for indicator_name, indicator in self.indicators.items():
-            self.logger.debug(f"Analyzing indicator '{indicator_name}'.")
-            self.analysis_results[indicator_name] = indicator.analyze_indicator()
+        for indicator_key, indicator in self.indicators.items():
+            self.logger.debug(f"Analyzing indicator '{indicator_key}'.")
+            self.analysis_results[indicator_key] = indicator.analyze_indicator()
         self.logger.info("DecisionEngine initialized with analysis results.")
 
     def get_rule_weight(self, rule_key: str) -> float:
@@ -140,13 +141,13 @@ class DecisionEngine:
         """
         Apply all decision rules to adjust the portfolio based on economic indicators.
 
-        This method determines whether the portfolio is in an initialization phase or a regular
-        adjustment phase. It then applies each decision rule accordingly and adjusts the portfolio
-        allocations to align with strategic objectives and risk constraints. After adjustments,
-        it generates a rebalancing report summarizing the actions taken.
+        This method applies each decision rule in a prioritized order and adjusts the portfolio
+        allocations accordingly. After adjustments, it generates a rebalancing report summarizing
+        the actions taken.
         """
         self.logger.info("Applying decision rules.")
         self.rule_messages = {}
+        self.adjustments = []  # Reset adjustments for the current cycle
 
         if self.is_empty():
             self.logger.info(
@@ -173,7 +174,7 @@ class DecisionEngine:
         self.portfolio.rebalance()
 
     def adjust_allocation(
-        self, asset: str, amount: float, rule: str, rule_weight: float
+        self, asset: str, amount: float, rule: str, rule_weight: float, rationale: str
     ) -> None:
         """
         Adjust the allocation for a specific asset based on a decision rule.
@@ -183,6 +184,7 @@ class DecisionEngine:
             amount (float): The adjustment amount (positive to increase, negative to decrease).
             rule (str): The decision rule that proposes this adjustment.
             rule_weight (float): The weight of the decision rule.
+            rationale (str): The strategic justification for the action.
         """
         # Limit adjustment to the maximum allowed
         if abs(amount) > self.max_adjustment:
@@ -194,56 +196,108 @@ class DecisionEngine:
 
         self.portfolio.adjust_allocation(asset, amount, rule, rule_weight)
 
-        # Directly access the description from IndicatorConfig
-        rule_description = self.indicators[rule].config.description
+        adjustment_record = {
+            "Adjustment Type": self.indicators[rule].config.description,
+            "Asset": asset,
+            "Action": f"{'Increased' if amount > 0 else 'Decreased'} by {abs(amount):.2f}%.",
+            "Amount": f"{'+' if amount > 0 else ''}{amount:.2f}%",
+            "Rationale": rationale,
+        }
+        self.adjustments.append(adjustment_record)
 
-        message = f"{rule_description}: {'Increased' if amount > 0 else 'Decreased'} '{asset}' by {abs(amount):.2f}%."
-        self._add_rule_message(rule, message)
-        self.logger.info(message)
+        self.logger.info(
+            f"{adjustment_record['Adjustment Type']}: {adjustment_record['Action']} Rationale: {adjustment_record['Rationale']}"
+        )
 
     def generate_rebalancing_report(self) -> str:
         """
-        Generate a plain text rebalancing report based on current economic indicators,
+        Generate a Markdown-formatted rebalancing report based on current economic indicators,
         portfolio adjustments, and updated portfolio allocations.
 
         Returns:
-            str: A string containing the formatted plain text report.
+            str: A string containing the formatted Markdown report.
         """
         report_lines = []
         report_date = datetime.datetime.now().strftime("%Y-%m-%d")
 
         # Report Header
-        report_lines.append(f"Rebalancing Report Date: {report_date}\n")
+        report_lines.append(f"## Rebalancing Report Date: {report_date}\n\n")
+
+        # Updated Portfolio Allocations Section
+        report_lines.append("### **Updated Portfolio Allocations**\n")
+        report_lines.append("| **Asset**                            | **Allocation** |")
+        report_lines.append(
+            "|--------------------------------------|-----------------|"
+        )
+        for asset, allocation in self.portfolio.get_allocations().items():
+            report_lines.append(f"| {asset:<36} | {allocation:.2f}%          |")
+        report_lines.append("\n---\n")
+
+        # Economic Indicators Overview Section
+        report_lines.append("### **Economic Indicators Overview**\n")
+        report_lines.append(
+            "| **Economic Indicator**       | **Overall Trend** | **1-Year Signal** |"
+        )
+        report_lines.append(
+            "|------------------------------|--------------------|--------------------|"
+        )
+
+        for indicator_key, indicator in self.indicators.items():
+            analysis = self.analysis_results.get(indicator_key, {})
+            overall_trend = analysis.get("overall_trend", "N/A")
+            one_year_signal = analysis.get("1y", {}).get("signal", "N/A")
+            display_name = (
+                indicator.config.name
+            )  # Use the 'name' attribute from IndicatorConfig
+            report_lines.append(
+                f"| {display_name:<30} | {overall_trend:<18} | {one_year_signal:<18} |"
+            )
+        report_lines.append("\n---\n")
 
         # Rebalancing Scenario Section
-        report_lines.append("Rebalancing Scenario")
-        report_lines.append("---------------------\n")
+        report_lines.append("### **Rebalancing Scenario**\n")
+        report_lines.append("#### **Portfolio Adjustments**\n")
+        report_lines.append(
+            "| **Adjustment Type**                | **Asset**                      | **Action**                                     | **Amount** | **Rationale**                                                                                         |"
+        )
+        report_lines.append(
+            "|------------------------------------|--------------------------------|------------------------------------------------|------------|-------------------------------------------------------------------------------------------------------|"
+        )
 
-        # Portfolio Adjustments
-        report_lines.append("Portfolio Adjustments:")
-        if not self.rule_messages:
-            report_lines.append("  - No adjustments made.\n")
-        else:
-            # Iterate through the rule_messages to provide context
-            for rule, messages in self.rule_messages.items():
-                for message in messages:
-                    report_lines.append(f"  - {message}\n")
+        for adjustment in self.adjustments:
+            report_lines.append(
+                f"| **{adjustment['Adjustment Type']}**  | {adjustment['Asset']} | {adjustment['Action']} | {adjustment['Amount']} | {adjustment['Rationale']} |"
+            )
 
-        # Updated Portfolio Allocations
-        report_lines.append("\n**Updated Portfolio Allocations:**")
-        for asset, allocation in self.portfolio.get_allocations().items():
-            report_lines.append(f"  - {asset}: {allocation:.2f}%")
+        report_lines.append("\n---\n")
+
+        # Notes Section
+        report_lines.append("### **Notes**\n")
+        report_lines.append(
+            "- **Overall Trend:** Represents the most frequently occurring trend signal derived from the analysis of all economic indicators."
+        )
+        report_lines.append(
+            "- **1-Year Trend Signal:** Reflects the trend signal specifically for each economic indicator over the past year.\n"
+        )
+        report_lines.append("\n---\n")
+
+        # Report Footer
+        report_lines.append("**Report Generated by:** Bondit v1.0 \n---")
 
         # Combine all lines into a single string
         return "\n".join(report_lines)
 
-    def save_rebalancing_report(self, file_path: str = "rebalancing_report.md") -> None:
+    def save_rebalancing_report(
+        self, file_path: str = "rebalancing_report.md", view: bool = False
+    ) -> None:
         """
-        Save the generated rebalancing report to a markdown file.
+        Save the generated rebalancing report to a markdown file and optionally view it using mdv.
 
         Args:
             file_path (str, optional): The path to the file where the report will be saved.
                                        Defaults to "rebalancing_report.md".
+            view (bool, optional): Whether to open the report in Terminal Markdown Viewer after saving.
+                                   Defaults to False.
 
         Raises:
             IOError: If the file cannot be written.
@@ -255,6 +309,36 @@ class DecisionEngine:
             self.logger.info(f"Rebalancing report saved to {file_path}.")
         except Exception as e:
             self.logger.error(f"Failed to save rebalancing report to {file_path}: {e}")
+            return  # Early exit if saving fails
+
+        if view:
+            self.view_rebalancing_report(file_path)
+
+    def view_rebalancing_report(self, file_path: str) -> None:
+        """
+        Open the saved rebalancing report using Terminal Markdown Viewer (mdv).
+
+        Args:
+            file_path (str): The path to the markdown file to be viewed.
+        """
+        # Check if mdv is installed
+        if shutil.which("mdv") is None:
+            self.logger.error(
+                "Terminal Markdown Viewer (mdv) is not installed or not found in PATH.\n"
+                "Please install it by running 'pip install mdv' and ensure it's accessible from your terminal."
+            )
+            return
+
+        # Attempt to open the report with mdv
+        try:
+            subprocess.run(["mdv", file_path], check=True)
+            self.logger.info(f"Opened '{file_path}' in Terminal Markdown Viewer (mdv).")
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Failed to open '{file_path}' with mdv: {e}")
+        except Exception as e:
+            self.logger.error(
+                f"An unexpected error occurred while opening the report: {e}"
+            )
 
     def _add_rule_message(self, rule: str, message: str) -> None:
         """

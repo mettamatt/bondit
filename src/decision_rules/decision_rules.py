@@ -1,8 +1,6 @@
 # src/decision_rules/decision_rules.py
 
 """
-decision_rules.py
-
 This module defines individual decision rules for the DecisionEngine. Each rule analyzes
 specific economic indicators and proposes adjustments to the investment portfolio accordingly.
 """
@@ -50,30 +48,6 @@ class DecisionRules:
                 logger.error(f"Error applying rule {rule.__name__}: {e}")
 
     @staticmethod
-    def _create_rule_message(
-        rule_name: str, analysis_details: str, action: str, rationale: str
-    ) -> str:
-        """
-        Create a standardized message for a decision rule.
-
-        Args:
-            rule_name (str): The name of the decision rule.
-            analysis_details (str): Details of the analysis that led to the decision.
-            action (str): The action taken as a result of the rule.
-            rationale (str): The strategic justification for the action.
-
-        Returns:
-            str: A formatted string containing the rule message.
-        """
-        message = (
-            f"{rule_name}:\n"
-            f"  - Analysis: {analysis_details}\n"
-            f"  - Action: {action}\n"
-            f"  - Rationale: {rationale}"
-        )
-        return message
-
-    @staticmethod
     def apply_interest_rate_rule(engine: "DecisionEngine") -> None:
         """
         Adjust portfolio allocations based on changes in the Federal Funds Rate.
@@ -100,55 +74,68 @@ class DecisionRules:
 
         if z_score > upper_threshold:
             # Rates are significantly higher than usual; reduce duration
-            analysis_details = f"Federal Funds Rate z-score is {z_score:.2f}, exceeding upper threshold of {upper_threshold}."
             action = f"Reduced long-term bond allocations by {adjustment:.2f}%."
             rationale = "High interest rates can lead to falling bond prices; reducing duration mitigates risk."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
+            # Adjust allocations
+            engine.adjust_allocation(
+                "Government Bonds - Long-Term",
+                -adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Government Bonds - Long-Term", -adjustment, indicator_key, rule_weight
+                "Corporate Bonds - Long-Term",
+                -adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Corporate Bonds - Long-Term", -adjustment, indicator_key, rule_weight
+                "Short-Term Bonds",
+                adjustment * 2,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
-            engine.adjust_allocation(
-                "Short-Term Bonds", adjustment * 2, indicator_key, rule_weight
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif z_score < lower_threshold:
             # Rates are significantly lower than usual; increase duration
-            analysis_details = f"Federal Funds Rate z-score is {z_score:.2f}, below lower threshold of {lower_threshold}."
             action = f"Increased long-term bond allocations by {adjustment:.2f}%."
             rationale = "Low interest rates can lead to rising bond prices; increasing duration can enhance returns."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
+            # Adjust allocations
+            engine.adjust_allocation(
+                "Government Bonds - Long-Term",
+                adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Government Bonds - Long-Term", adjustment, indicator_key, rule_weight
+                "Corporate Bonds - Long-Term",
+                adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Corporate Bonds - Long-Term", adjustment, indicator_key, rule_weight
+                "Short-Term Bonds",
+                -adjustment * 2,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
-            engine.adjust_allocation(
-                "Short-Term Bonds", -adjustment * 2, indicator_key, rule_weight
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
             # No significant change
-            analysis_details = f"Federal Funds Rate z-score is {z_score:.2f}."
             action = "No adjustment made."
             rationale = "No significant change in interest rates."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
     @staticmethod
     def apply_inflation_rule(engine: "DecisionEngine") -> None:
@@ -188,46 +175,37 @@ class DecisionRules:
             adjustment = min(adjustment_amount, desired_tips_alloc - current_tips_alloc)
 
             if adjustment > 0:
-                analysis_details = f"High inflation detected with composite change {composite_change:.2f}%."
                 action = f"Increased TIPS allocation by {adjustment:.2f}%."
                 rationale = "High inflation reduces real returns on nominal bonds; TIPS provide inflation protection."
 
-                message = DecisionRules._create_rule_message(
-                    rule_name, analysis_details, action, rationale
+                engine.adjust_allocation(
+                    "TIPS", adjustment, cpi_key, rule_weight, rationale
                 )
-                engine.adjust_allocation("TIPS", adjustment, cpi_key, rule_weight)
-                engine._add_rule_message(cpi_key, message)
-                engine.logger.info(message)
+
+                engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif composite_change < lower_threshold:
             # Reduce TIPS, increase Nominal Bonds
             current_tips_alloc = engine.portfolio.allocations.get("TIPS", 0.0)
             adjustment = min(adjustment_amount, current_tips_alloc)
 
             if adjustment > 0:
-                analysis_details = f"Low inflation detected with composite change {composite_change:.2f}%."
                 action = f"Reduced TIPS allocation by {adjustment:.2f}% and increased Nominal Bonds by the same amount."
                 rationale = "Low inflation makes nominal bonds more attractive; reducing TIPS allocation accordingly."
 
-                message = DecisionRules._create_rule_message(
-                    rule_name, analysis_details, action, rationale
-                )
-                engine.adjust_allocation("TIPS", -adjustment, cpi_key, rule_weight)
                 engine.adjust_allocation(
-                    "Nominal Bonds", adjustment, cpi_key, rule_weight
+                    "TIPS", -adjustment, cpi_key, rule_weight, rationale
                 )
-                engine._add_rule_message(cpi_key, message)
-                engine.logger.info(message)
+                engine.adjust_allocation(
+                    "Nominal Bonds", adjustment, cpi_key, rule_weight, rationale
+                )
+
+                engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
             # Stable Inflation
-            analysis_details = f"Stable inflation detected with composite change {composite_change:.2f}%."
             action = "No adjustment made."
             rationale = "Inflation levels are stable; maintaining current allocations."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
-            engine._add_rule_message(cpi_key, message)
-            engine.logger.info(message)
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
     @staticmethod
     def apply_inflation_expectations_rule(engine: "DecisionEngine") -> None:
@@ -256,44 +234,35 @@ class DecisionRules:
 
         if change > upper_threshold:
             # Inflation expectations are rising; allocate more to TIPS
-            analysis_details = f"Rising inflation expectations detected with a change of {change:.2f}%."
             action = f"Increased TIPS allocation by {adjustment:.2f}%."
             rationale = "Rising inflation expectations reduce real returns on nominal bonds; increasing TIPS hedges against inflation."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
+            engine.adjust_allocation(
+                "TIPS", adjustment, indicator_key, rule_weight, rationale
             )
-            engine.adjust_allocation("TIPS", adjustment, indicator_key, rule_weight)
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif change < lower_threshold:
             # Inflation expectations are falling; allocate more to Nominal Bonds
-            analysis_details = f"Falling inflation expectations detected with a change of {change:.2f}%."
             action = f"Reduced TIPS allocation by {adjustment:.2f}% and increased Nominal Bonds by the same amount."
             rationale = "Falling inflation expectations make nominal bonds more attractive; reducing TIPS allocation accordingly."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
-            engine.adjust_allocation("TIPS", -adjustment, indicator_key, rule_weight)
             engine.adjust_allocation(
-                "Nominal Bonds", adjustment, indicator_key, rule_weight
+                "TIPS", -adjustment, indicator_key, rule_weight, rationale
             )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+            engine.adjust_allocation(
+                "Nominal Bonds", adjustment, indicator_key, rule_weight, rationale
+            )
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
             # Inflation expectations are stable
-            analysis_details = f"Inflation expectations change is {change:.2f}%."
             action = "No adjustment made."
             rationale = (
                 "Inflation expectations are stable; maintaining current allocations."
             )
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
     @staticmethod
     def apply_yield_curve_rule(engine: "DecisionEngine") -> None:
@@ -322,48 +291,43 @@ class DecisionRules:
 
         if change < lower_threshold:
             # Yield spread is narrowing significantly
-            analysis_details = f"Yield spread narrowing by {change:.2f}%, below lower threshold of {lower_threshold}%."
             action = f"Increased allocation to long-term government bonds by {adjustment:.2f}%."
             rationale = "Narrowing yield spread signals economic slowdown; long-term bonds offer safety."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
             engine.adjust_allocation(
-                "Government Bonds - Long-Term", adjustment, indicator_key, rule_weight
+                "Government Bonds - Long-Term",
+                adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif change > upper_threshold:
             # Yield spread is widening significantly
-            analysis_details = f"Yield spread widening by {change:.2f}%, above upper threshold of {upper_threshold}%."
             action = (
                 f"Reduced long-term government bond allocation by {adjustment:.2f}%."
             )
             rationale = "Widening yield spread indicates economic expansion; reducing duration mitigates risk."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
+            engine.adjust_allocation(
+                "Government Bonds - Long-Term",
+                -adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Government Bonds - Long-Term", -adjustment, indicator_key, rule_weight
+                "Short-Term Bonds", adjustment, indicator_key, rule_weight, rationale
             )
-            engine.adjust_allocation(
-                "Short-Term Bonds", adjustment, indicator_key, rule_weight
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
             # Yield spread is stable
-            analysis_details = f"Yield spread change is {change:.2f}%."
             action = "No adjustment made."
             rationale = "Yield spread is stable, indicating no significant change in economic outlook."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
     @staticmethod
     def apply_recession_probability_rule(engine: "DecisionEngine") -> None:
@@ -392,91 +356,86 @@ class DecisionRules:
 
         if current_value > upper_threshold:
             # High recession probability; increase allocation to government bonds
-            analysis_details = f"High recession probability detected at {current_value:.2f}%, exceeding upper threshold of {upper_threshold}%."
             action = (
                 f"Increased allocation to government bonds by {adjustment / 2:.2f}%."
             )
             rationale = "High recession probability increases default risk on corporate bonds; shifting to safer government bonds reduces credit risk."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
             engine.adjust_allocation(
                 "Corporate Bonds - Long-Term",
                 -adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Corporate Bonds - Intermediate-Term",
                 -adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Government Bonds - Long-Term",
                 adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Government Bonds - Intermediate-Term",
                 adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif current_value < lower_threshold:
             # Low recession probability; increase allocation to corporate bonds
-            analysis_details = f"Low recession probability detected at {current_value:.2f}%, below lower threshold of {lower_threshold}%."
             action = (
                 f"Increased allocation to corporate bonds by {adjustment / 2:.2f}%."
             )
             rationale = "Low recession probability reduces default risk on corporate bonds; increasing exposure can enhance returns."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
             engine.adjust_allocation(
                 "Government Bonds - Long-Term",
                 -adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Government Bonds - Intermediate-Term",
                 -adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Corporate Bonds - Long-Term",
                 adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Corporate Bonds - Intermediate-Term",
                 adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
             # Recession probability is stable
-            analysis_details = f"Recession probability is {current_value:.2f}%."
             action = "No adjustment made."
             rationale = (
                 "Recession probability is stable; maintaining current allocations."
             )
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
     @staticmethod
     def apply_credit_spread_rule(engine: "DecisionEngine") -> None:
@@ -505,85 +464,80 @@ class DecisionRules:
 
         if change > upper_threshold:
             # Credit spreads have widened; reduce exposure to corporate bonds
-            analysis_details = f"Credit spreads have widened by {change:.2f}%, exceeding upper threshold of {upper_threshold}%."
             action = f"Reduced corporate bond exposure by {adjustment / 2:.2f}%."
             rationale = "Widening credit spreads indicate increased default risk; reducing exposure to corporate bonds lowers credit risk."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
             engine.adjust_allocation(
                 "Corporate Bonds - Long-Term",
                 -adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Corporate Bonds - Intermediate-Term",
                 -adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Government Bonds - Long-Term",
                 adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Government Bonds - Intermediate-Term",
                 adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif change < lower_threshold:
             # Credit spreads have narrowed; increase exposure to corporate bonds
-            analysis_details = f"Credit spreads have narrowed by {change:.2f}%, below lower threshold of {lower_threshold}%."
             action = f"Increased corporate bond exposure by {adjustment / 2:.2f}%."
             rationale = "Narrowing credit spreads indicate improved corporate credit conditions; increasing exposure can enhance returns."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
             engine.adjust_allocation(
                 "Government Bonds - Long-Term",
                 -adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Government Bonds - Intermediate-Term",
                 -adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Corporate Bonds - Long-Term",
                 adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
                 "Corporate Bonds - Intermediate-Term",
                 adjustment / 2,
                 indicator_key,
                 rule_weight,
+                rationale,
             )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
             # Credit spread is stable
-            analysis_details = f"Credit spread change is {change:.2f}%."
             action = "No adjustment made."
             rationale = "Credit spreads are stable, indicating consistent corporate credit conditions."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
     @staticmethod
     def apply_gdp_growth_rule(engine: "DecisionEngine") -> None:
@@ -610,55 +564,66 @@ class DecisionRules:
 
         if change > upper_threshold:
             # GDP growth is strong; reduce duration
-            analysis_details = f"GDP growth increased by {change:.2f}%, exceeding the upper threshold of {upper_threshold}."
             action = f"Reduced long-term bond allocations by {adjustment:.2f}%."
             rationale = "Strong GDP growth suggests economic expansion; reducing duration mitigates interest rate risk."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
+            engine.adjust_allocation(
+                "Government Bonds - Long-Term",
+                -adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Government Bonds - Long-Term", -adjustment, indicator_key, rule_weight
+                "Corporate Bonds - Long-Term",
+                -adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Corporate Bonds - Long-Term", -adjustment, indicator_key, rule_weight
+                "Short-Term Bonds",
+                adjustment * 2,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
-            engine.adjust_allocation(
-                "Short-Term Bonds", adjustment * 2, indicator_key, rule_weight
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif change < lower_threshold:
             # GDP growth is weak; increase duration
-            analysis_details = f"GDP growth decreased by {change:.2f}%, below the lower threshold of {lower_threshold}."
             action = f"Increased long-term bond allocations by {adjustment:.2f}%."
             rationale = "Weak GDP growth indicates economic slowdown; increasing duration favors stability."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
+            engine.adjust_allocation(
+                "Government Bonds - Long-Term",
+                adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Government Bonds - Long-Term", adjustment, indicator_key, rule_weight
+                "Corporate Bonds - Long-Term",
+                adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Corporate Bonds - Long-Term", adjustment, indicator_key, rule_weight
+                "Short-Term Bonds",
+                -adjustment * 2,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
-            engine.adjust_allocation(
-                "Short-Term Bonds", -adjustment * 2, indicator_key, rule_weight
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
             # GDP growth is stable
-            analysis_details = f"GDP growth change is {change:.2f}%."
             action = "No adjustment made."
             rationale = "Stable GDP growth indicates steady economic conditions."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
     @staticmethod
     def apply_employment_rule(engine: "DecisionEngine") -> None:
@@ -685,54 +650,65 @@ class DecisionRules:
 
         if change > upper_threshold:
             # Unemployment rate has increased significantly; increase duration
-            analysis_details = f"Unemployment rate increased by {change:.2f}%, exceeding upper threshold of {upper_threshold}%."
             action = f"Increased long-term bond allocations by {adjustment:.2f}%."
             rationale = "Rising unemployment may indicate economic weakness; increasing duration favors safer bonds."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
+            engine.adjust_allocation(
+                "Government Bonds - Long-Term",
+                adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Government Bonds - Long-Term", adjustment, indicator_key, rule_weight
+                "Corporate Bonds - Long-Term",
+                adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Corporate Bonds - Long-Term", adjustment, indicator_key, rule_weight
+                "Short-Term Bonds",
+                -adjustment * 2,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
-            engine.adjust_allocation(
-                "Short-Term Bonds", -adjustment * 2, indicator_key, rule_weight
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif change < lower_threshold:
             # Unemployment rate has decreased significantly; reduce duration
-            analysis_details = f"Unemployment rate decreased by {change:.2f}%, below lower threshold of {lower_threshold}%."
             action = f"Reduced long-term bond allocations by {adjustment:.2f}%."
             rationale = "Falling unemployment indicates economic strength; reducing duration mitigates interest rate risk."
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
+            engine.adjust_allocation(
+                "Government Bonds - Long-Term",
+                -adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Government Bonds - Long-Term", -adjustment, indicator_key, rule_weight
+                "Corporate Bonds - Long-Term",
+                -adjustment,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
             engine.adjust_allocation(
-                "Corporate Bonds - Long-Term", -adjustment, indicator_key, rule_weight
+                "Short-Term Bonds",
+                adjustment * 2,
+                indicator_key,
+                rule_weight,
+                rationale,
             )
-            engine.adjust_allocation(
-                "Short-Term Bonds", adjustment * 2, indicator_key, rule_weight
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
             # Unemployment rate is stable
-            analysis_details = f"Unemployment rate change is {change:.2f}%."
             action = "No adjustment made."
             rationale = (
                 "Employment levels are stable, suggesting steady economic conditions."
             )
 
-            message = DecisionRules._create_rule_message(
-                rule_name, analysis_details, action, rationale
-            )
-            engine._add_rule_message(indicator_key, message)
-            engine.logger.info(message)
+            engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
