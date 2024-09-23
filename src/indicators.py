@@ -76,6 +76,7 @@ class EconomicIndicator:
         self.indicator_type: str = config.indicator_type
         self.name = config.name
         self.internal_key = config.internal_key
+        self.description = config.description
         self.data: pd.DataFrame = pd.DataFrame()
         self.logger.debug(f"Initializing EconomicIndicator for '{self.name}'.")
         self.process_data(data)

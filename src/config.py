@@ -13,6 +13,7 @@ class IndicatorConfig:
         series_id (str): The unique identifier for the data series as per the data source.
         name (str): A human-readable name for the economic indicator.
         internal_key (str): A key used internally within the application to reference the indicator.
+        description (str): A brief description of the economic indicator.
         indicator_type (str): The frequency type of the indicator data (e.g., 'MONTHLY', 'DAILY', 'QUARTERLY').
         time_frame_weights (Dict[int, float]):
             A dictionary mapping time frames (in years) to their respective weights.
@@ -38,11 +39,12 @@ class IndicatorConfig:
     series_id: str
     name: str
     internal_key: str
+    description: str
     indicator_type: str
     time_frame_weights: Dict[int, float]
     calculation_method: str
     thresholds: Tuple[float, float]
-    rule_weight: float  # New attribute for rule weighting
+    rule_weight: float
 
 
 # Centralized list of all economic indicators with their configurations
@@ -52,6 +54,7 @@ INDICATORS: List[IndicatorConfig] = [
         series_id="FEDFUNDS",
         name="Federal Funds Rate",
         internal_key="fed_funds",
+        description="Federal Funds Rate Adjustment",
         indicator_type="MONTHLY",
         time_frame_weights={1: 0.30, 3: 0.40, 5: 0.30},
         calculation_method="z_score",
@@ -63,6 +66,7 @@ INDICATORS: List[IndicatorConfig] = [
         series_id="CPIAUCSL",
         name="Consumer Price Index (CPI)",
         internal_key="cpi",
+        description="Composite CPI & PCE Inflation Adjustment",
         indicator_type="MONTHLY",
         time_frame_weights={1: 1.0},  # Focus on 1-year for YoY change
         calculation_method="year_over_year_change",
@@ -74,61 +78,43 @@ INDICATORS: List[IndicatorConfig] = [
         series_id="PCEPI",
         name="Personal Consumption Expenditures Price Index (PCE)",
         internal_key="pce",
+        description="Composite CPI & PCE Inflation Adjustment",
         indicator_type="MONTHLY",
         time_frame_weights={1: 1.0},
         calculation_method="year_over_year_change",
         thresholds=(2.5, 2.0),  # Inflation targets
         rule_weight=0.9,
     ),
-    # Yield Spread
-    IndicatorConfig(
-        series_id="T10Y2Y",
-        name="Yield Spread",
-        internal_key="yield_spread",
-        indicator_type="DAILY",
-        time_frame_weights={1: 0.20, 3: 0.50, 5: 0.30},
-        calculation_method="basis_points_change",
-        thresholds=(50, -50),  # Thresholds in basis points
-        rule_weight=0.7,
-    ),
-    # Unemployment Rate
-    IndicatorConfig(
-        series_id="UNRATE",
-        name="Unemployment Rate",
-        internal_key="unrate",
-        indicator_type="MONTHLY",
-        time_frame_weights={1: 1.0},  # Focus on recent changes
-        calculation_method="absolute_change",
-        thresholds=(0.5, -0.5),  # Thresholds in percentage points
-        rule_weight=0.3,  # Lowest priority
-    ),
-    # Real Gross Domestic Product (GDP)
-    IndicatorConfig(
-        series_id="GDPC1",
-        name="Real Gross Domestic Product (GDP)",
-        internal_key="gdp",
-        indicator_type="QUARTERLY",
-        time_frame_weights={1: 1.0},
-        calculation_method="cagr",
-        thresholds=(3.0, 2.0),  # Thresholds in percentage points
-        rule_weight=0.4,
-    ),
     # 5-Year Breakeven Inflation Rate
     IndicatorConfig(
         series_id="T5YIE",
         name="5-Year Breakeven Inflation Rate",
         internal_key="breakeven_inflation",
+        description="Breakeven Inflation Adjustment",
         indicator_type="DAILY",
         time_frame_weights={1: 1.0},  # Focus on recent data
         calculation_method="basis_points_change",
         thresholds=(10, -10),  # Thresholds in basis points
         rule_weight=0.8,
     ),
+    # Yield Spread
+    IndicatorConfig(
+        series_id="T10Y2Y",
+        name="Yield Spread",
+        internal_key="yield_spread",
+        description="Yield Spread Adjustment",
+        indicator_type="DAILY",
+        time_frame_weights={1: 0.20, 3: 0.50, 5: 0.30},
+        calculation_method="basis_points_change",
+        thresholds=(50, -50),  # Thresholds in basis points
+        rule_weight=0.7,
+    ),
     # Recession Probabilities
     IndicatorConfig(
         series_id="RECPROUSM156N",
         name="Recession Probabilities",
         internal_key="recession_prob",
+        description="Recession Probability Adjustment",
         indicator_type="MONTHLY",
         time_frame_weights={1: 1.0},  # Focus on recent data
         calculation_method="current_value",
@@ -140,10 +126,35 @@ INDICATORS: List[IndicatorConfig] = [
         series_id="BAA10YM",
         name="Moody's BAA Corporate Bond Yield Minus 10-Year Treasury Yield",
         internal_key="credit_spread",
+        description="Credit Spread Adjustment",
         indicator_type="MONTHLY",
         time_frame_weights={1: 0.25, 3: 0.50, 5: 0.25},
         calculation_method="basis_points_change",
         thresholds=(50, -50),  # Thresholds in basis points
         rule_weight=0.5,
+    ),
+    # Real Gross Domestic Product (GDP)
+    IndicatorConfig(
+        series_id="GDPC1",
+        name="Real Gross Domestic Product (GDP)",
+        internal_key="gdp",
+        description="GDP Growth Rate Adjustment",
+        indicator_type="QUARTERLY",
+        time_frame_weights={1: 1.0},
+        calculation_method="cagr",
+        thresholds=(3.0, 2.0),  # Thresholds in percentage points
+        rule_weight=0.4,
+    ),
+    # Unemployment Rate
+    IndicatorConfig(
+        series_id="UNRATE",
+        name="Unemployment Rate",
+        internal_key="unrate",
+        description="Unemployment Rate Adjustment",
+        indicator_type="MONTHLY",
+        time_frame_weights={1: 1.0},  # Focus on recent changes
+        calculation_method="absolute_change",
+        thresholds=(0.5, -0.5),  # Thresholds in percentage points
+        rule_weight=0.3,  # Lowest priority
     ),
 ]

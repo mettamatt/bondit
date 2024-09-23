@@ -1,4 +1,4 @@
-# src/decision_rules.py
+# src/decision_rules/decision_rules.py
 
 """
 decision_rules.py

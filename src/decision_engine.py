@@ -193,7 +193,11 @@ class DecisionEngine:
             amount = adjusted_amount
 
         self.portfolio.adjust_allocation(asset, amount, rule, rule_weight)
-        message = f"{self.get_rule_description(rule)}: {'Increased' if amount > 0 else 'Decreased'} '{asset}' by {abs(amount):.2f}%."
+
+        # Directly access the description from IndicatorConfig
+        rule_description = self.indicators[rule].config.description
+
+        message = f"{rule_description}: {'Increased' if amount > 0 else 'Decreased'} '{asset}' by {abs(amount):.2f}%."
         self._add_rule_message(rule, message)
         self.logger.info(message)
 
@@ -251,31 +255,6 @@ class DecisionEngine:
             self.logger.info(f"Rebalancing report saved to {file_path}.")
         except Exception as e:
             self.logger.error(f"Failed to save rebalancing report to {file_path}: {e}")
-
-    def get_rule_description(self, rule: str) -> str:
-        """
-        Retrieve a human-readable description for a given decision rule.
-
-        Args:
-            rule (str): The identifier of the decision rule.
-
-        Returns:
-            str: A descriptive string for the rule.
-        """
-        rule_descriptions = {
-            "interest_rate": "Federal Funds Rate Adjustment",
-            "inflation": "Composite CPI & PCE Inflation Adjustment",
-            "yield_curve": "Yield Spread Adjustment",
-            "employment": "Unemployment Rate Adjustment",
-            "gdp": "GDP Growth Rate Adjustment",
-            "inflation_expectations": "Breakeven Inflation Adjustment",
-            "recession": "Recession Probability Adjustment",
-            "credit_spread": "Credit Spread Adjustment",
-            "allocation_adjustment": "Portfolio Allocation Diversification",
-        }
-        return rule_descriptions.get(
-            rule, f"{rule.replace('_', ' ').title()} Adjustment"
-        )
 
     def _add_rule_message(self, rule: str, message: str) -> None:
         """
