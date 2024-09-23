@@ -58,7 +58,7 @@ INDICATORS: List[IndicatorConfig] = [
         indicator_type="MONTHLY",
         time_frame_weights={1: 0.30, 3: 0.40, 5: 0.30},
         calculation_method="z_score",
-        thresholds=(1.5, -1.5),  # Z-score thresholds for trend signals
+        thresholds=(1.0, -1.0),  # Z-score thresholds for trend signals
         rule_weight=1.0,  # Highest priority
     ),
     # Consumer Price Index (CPI)
