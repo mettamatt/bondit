@@ -48,11 +48,11 @@ class Portfolio:
 
         Args:
             allocations (Optional[Dict[str, float]]):
-                Initial allocation percentages for each asset type. If None, starts with an empty portfolio.
+                Initial allocation percentages for each asset type. If None, starts with a default portfolio.
             min_allocations (Optional[Dict[str, float]]):
-                Minimum allocation percentages for each asset type. Defaults are provided for common assets.
+                Minimum allocation percentages for each asset type. Defaults are set to 0% for all assets.
             max_allocations (Optional[Dict[str, float]]):
-                Maximum allocation percentages for each asset type. Defaults are provided for common assets.
+                Maximum allocation percentages for each asset type, based on provided constraints.
             logger (Optional[logging.Logger], optional):
                 Logger instance for logging messages. If None, a default logger is used.
 
@@ -61,38 +61,54 @@ class Portfolio:
 
         Example:
             >>> portfolio = Portfolio(
-            ...     allocations={"Government Bonds - Long-Term": 30.0, "Short-Term Bonds": 10.0},
-            ...     min_allocations={"Government Bonds - Long-Term": 10.0, "Short-Term Bonds": 5.0},
-            ...     max_allocations={"Government Bonds - Long-Term": 50.0, "Short-Term Bonds": 20.0}
+            ...     allocations={"Long-Term Government Bond": 25.0, "Long-Term Investment-Grade Corporate Bond": 25.0, ...},
+            ...     min_allocations={"Long-Term Government Bond": 0.0, "Long-Term Investment-Grade Corporate Bond": 0.0, ...},
+            ...     max_allocations={"Long-Term Government Bond": 30.0, "Long-Term Investment-Grade Corporate Bond": 25.0, ...}
             ... )
         """
         self.logger: logging.Logger = logger or logging.getLogger("Bondit.Portfolio")
-        self.allocations: Dict[str, float] = allocations.copy() if allocations else {}
+        
+        # Set default allocations if none provided
+        default_allocations = {
+            "Long-Term Government Bond": 25.0,
+            "Long-Term Investment-Grade Corporate Bond": 20.0,
+            "Intermediate-Term Government Bond": 15.0,
+            "Intermediate-Term Investment-Grade Corporate Bond": 15.0,
+            "Short-Term Government Bond": 5.0,
+            "Short-Term Investment-Grade Corporate Bond": 5.0,
+            "TIPS": 10.0,
+            "Intermediate-Term National Municipal Bond": 5.0,
+            "Intermediate-Term State Municipal Bond": 5.0,
+            "Short-Term National Municipal Bond": 2.5,
+            "Short-Term State Municipal Bond": 2.5,
+            "International Bond": 10.0,
+        }
+        
+        self.allocations: Dict[str, float] = allocations.copy() if allocations else default_allocations.copy()
+        
+        # Set minimum allocations to 0% for all assets
+        default_min_allocations = {asset: 0.0 for asset in self.allocations.keys()}
         self.min_allocations: Dict[str, float] = (
-            min_allocations.copy()
-            if min_allocations
-            else {
-                "Government Bonds - Long-Term": 10.0,
-                "Corporate Bonds - Long-Term": 5.0,
-                "Government Bonds - Intermediate-Term": 10.0,
-                "Corporate Bonds - Intermediate-Term": 5.0,
-                "Short-Term Bonds": 5.0,
-                "TIPS": 2.0,
-                "Nominal Bonds": 0.0,
-            }
+            min_allocations.copy() if min_allocations else default_min_allocations
         )
+        
+        # Set maximum allocations based on the provided constraints
+        default_max_allocations = {
+            "Long-Term Government Bond": 30.0,
+            "Long-Term Investment-Grade Corporate Bond": 25.0,
+            "Intermediate-Term Government Bond": 20.0,
+            "Intermediate-Term Investment-Grade Corporate Bond": 20.0,
+            "Short-Term Government Bond": 10.0,
+            "Short-Term Investment-Grade Corporate Bond": 10.0,
+            "TIPS": 15.0,
+            "Intermediate-Term National Municipal Bond": 10.0,
+            "Intermediate-Term State Municipal Bond": 10.0,
+            "Short-Term National Municipal Bond": 5.0,
+            "Short-Term State Municipal Bond": 5.0,
+            "International Bond": 15.0,
+        }
         self.max_allocations: Dict[str, float] = (
-            max_allocations.copy()
-            if max_allocations
-            else {
-                "Government Bonds - Long-Term": 50.0,
-                "Corporate Bonds - Long-Term": 30.0,
-                "Government Bonds - Intermediate-Term": 40.0,
-                "Corporate Bonds - Intermediate-Term": 25.0,
-                "Short-Term Bonds": 20.0,
-                "TIPS": 10.0,
-                "Nominal Bonds": 30.0,
-            }
+            max_allocations.copy() if max_allocations else default_max_allocations
         )
 
         self.logger.debug(
@@ -106,25 +122,40 @@ class Portfolio:
             if asset not in self.max_allocations:
                 self.max_allocations[asset] = 100.0  # Default max allocation
                 self.logger.debug(f"Set default max allocation for '{asset}': 100.0%")
+            if asset not in self.min_allocations:
+                self.min_allocations[asset] = 0.0  # Default min allocation
 
-        if self.allocations:
-            total_alloc = sum(self.allocations.values())
-            self.logger.debug(f"Total initial allocation: {total_alloc}%")
-
-            # Use math.isclose to handle floating-point precision
-            if not math.isclose(total_alloc, 100.0, abs_tol=1e-2):
-                self.logger.error(
-                    f"Initial allocations sum to {total_alloc}%, expected 100%."
+        # Validate that allocations adhere to min and max constraints
+        for asset in self.allocations:
+            alloc = self.allocations[asset]
+            min_alloc = self.min_allocations.get(asset, 0.0)
+            max_alloc = self.max_allocations.get(asset, 100.0)
+            if alloc < min_alloc:
+                self.logger.warning(
+                    f"Allocation for '{asset}' is below the minimum of {min_alloc}%. Adjusting to minimum."
                 )
-                raise ValueError("Initial allocations must sum to 100%.")
-            self.logger.info(
-                "Portfolio initialized successfully with allocations summing to 100%."
+                self.allocations[asset] = min_alloc
+            elif alloc > max_alloc:
+                self.logger.warning(
+                    f"Allocation for '{asset}' exceeds the maximum of {max_alloc}%. Adjusting to maximum."
+                )
+                self.allocations[asset] = max_alloc
+
+        total_alloc = sum(self.allocations.values())
+        self.logger.debug(f"Total initial allocation: {total_alloc}%")
+
+        # Use math.isclose to handle floating-point precision
+        if not math.isclose(total_alloc, 100.0, abs_tol=1e-2):
+            self.logger.error(
+                f"Initial allocations sum to {total_alloc}%, expected 100%."
             )
-        else:
-            self.logger.info("Portfolio initialized without initial allocations.")
+            raise ValueError("Initial allocations must sum to 100%.")
+        self.logger.info(
+            "Portfolio initialized successfully with allocations summing to 100%."
+        )
 
     def adjust_allocation(
-        self, asset_type: str, amount: float, rule_key: str, rule_weight: float
+        self, asset_type: str, amount: float, rule_key: str, rule_weight: float, rationale: str = ""
     ) -> None:
         """
         Adjust the allocation for a specific asset type.
@@ -134,6 +165,7 @@ class Portfolio:
             amount (float): The amount to adjust (positive or negative).
             rule_key (str): The key of the rule making the adjustment.
             rule_weight (float): The weight of the rule influencing the adjustment.
+            rationale (str): The rationale for the adjustment.
         """
         old_alloc = self.allocations.get(asset_type, 0.0)
         proposed_alloc = old_alloc + amount
@@ -167,7 +199,8 @@ class Portfolio:
             f"Adjustment made by Rule '{rule_key}' (Weight: {rule_weight}) - "
             f"Asset: '{asset_type}', "
             f"Amount: {adjusted_amount:+.2f}%, "
-            f"Allocation: {old_alloc:.2f}% -> {self.allocations[asset_type]:.2f}%."
+            f"Allocation: {old_alloc:.2f}% -> {self.allocations[asset_type]:.2f}%. "
+            f"Rationale: {rationale}"
         )
 
     def set_allocations(self, allocations: Dict[str, float]) -> None:
@@ -212,9 +245,9 @@ class Portfolio:
         """
         self.logger.debug(f"Setting allocation for '{asset_type}' to {alloc}%.")
 
-        # Enforce constraints with flexibility
-        min_alloc = self.min_allocations.get(asset_type, 0.0) - 5.0  # Allow 5% buffer
-        max_alloc = self.max_allocations.get(asset_type, 100.0) + 5.0  # Allow 5% buffer
+        # Enforce constraints
+        min_alloc = self.min_allocations.get(asset_type, 0.0)
+        max_alloc = self.max_allocations.get(asset_type, 100.0)
 
         constrained_alloc = max(min_alloc, min(alloc, max_alloc))
         self.allocations[asset_type] = constrained_alloc
@@ -257,6 +290,9 @@ class Portfolio:
             for asset_type in self.allocations:
                 old_alloc = self.allocations[asset_type]
                 new_alloc = old_alloc * factor
+                # Enforce max allocations after rebalancing
+                max_alloc = self.max_allocations.get(asset_type, 100.0)
+                new_alloc = min(new_alloc, max_alloc)
                 self.allocations[asset_type] = new_alloc
                 self.logger.debug(
                     f"Rebalanced '{asset_type}': {old_alloc}% -> {new_alloc:.2f}%"
@@ -281,7 +317,7 @@ class Portfolio:
         Example:
             >>> current_allocations = portfolio.get_allocations()
             >>> print(current_allocations)
-            {'Government Bonds - Long-Term': 30.0, 'Short-Term Bonds': 10.0}
+            {'Long-Term Government Bond': 30.0, 'Short-Term Bonds': 10.0}
         """
         self.logger.debug(f"Retrieving current allocations: {self.allocations}")
         return self.allocations.copy()
@@ -314,7 +350,7 @@ class Portfolio:
         Example:
             >>> asset_types = portfolio.get_all_asset_types()
             >>> print(asset_types)
-            ['Government Bonds - Long-Term', 'Short-Term Bonds']
+            ['Long-Term Government Bond', 'Short-Term Bonds']
         """
         self.logger.debug("Retrieving all asset types in the portfolio.")
         return list(self.allocations.keys())

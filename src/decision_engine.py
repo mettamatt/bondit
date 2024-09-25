@@ -78,13 +78,16 @@ class DecisionEngine:
 
         # Define strategic baseline allocations (total should sum to 100%)
         self.baseline_allocations: Dict[str, float] = {
-            "Government Bonds - Long-Term": 30.0,
-            "Corporate Bonds - Long-Term": 20.0,
-            "Government Bonds - Intermediate-Term": 20.0,
-            "Corporate Bonds - Intermediate-Term": 15.0,
-            "Short-Term Bonds": 10.0,
-            "TIPS": 5.0,
-            "Nominal Bonds": 0.0,
+            "Intermediate-Term Government Bond": 15.0,
+            "Intermediate-Term Investment-Grade Corporate Bond": 10.0,
+            "Intermediate-Term National Municipal Bond": 10.0,
+            "Intermediate-Term State Municipal Bond": 5.0,
+            "Long-Term Government Bond": 10.0,
+            "Long-Term Investment-Grade Corporate Bond": 10.0,
+            "Short-Term Government Bond": 10.0,
+            "Short-Term Investment-Grade Corporate Bond": 5.0,
+            "Short-Term National Municipal Bond": 5.0,
+            "International Bond": 10.0,
         }
 
         if not math.isclose(
@@ -97,13 +100,16 @@ class DecisionEngine:
 
         # Define asset risk levels (higher number indicates higher risk)
         self.asset_risk_levels: Dict[str, float] = {
-            "Government Bonds - Long-Term": 2.0,
-            "Corporate Bonds - Long-Term": 3.0,
-            "Government Bonds - Intermediate-Term": 2.0,
-            "Corporate Bonds - Intermediate-Term": 3.0,
-            "Short-Term Bonds": 1.0,
-            "TIPS": 2.0,
-            "Nominal Bonds": 2.5,
+            "Intermediate-Term Government Bond": 2.0,
+            "Intermediate-Term Investment-Grade Corporate Bond": 3.0,
+            "Intermediate-Term National Municipal Bond": 2.5,
+            "Intermediate-Term State Municipal Bond": 2.5,
+            "Long-Term Government Bond": 2.5,
+            "Long-Term Investment-Grade Corporate Bond": 3.5,
+            "Short-Term Government Bond": 1.0,
+            "Short-Term Investment-Grade Corporate Bond": 1.5,
+            "Short-Term National Municipal Bond": 1.5,
+            "International Bond": 3.5,
         }
 
         # Set maximum acceptable average portfolio risk level
