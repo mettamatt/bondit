@@ -61,51 +61,35 @@ class Portfolio:
 
         Example:
             >>> portfolio = Portfolio(
-            ...     allocations={"Long-Term Government Bond": 25.0, "Long-Term Investment-Grade Corporate Bond": 25.0, ...},
-            ...     min_allocations={"Long-Term Government Bond": 0.0, "Long-Term Investment-Grade Corporate Bond": 0.0, ...},
-            ...     max_allocations={"Long-Term Government Bond": 30.0, "Long-Term Investment-Grade Corporate Bond": 25.0, ...}
+            ...     allocations={"VBIRX": 40.0, "VBLAX": 40.0, "VTAPX": 20.0},
+            ...     min_allocations={"VBIRX": 0.0, "VBLAX": 0.0, "VTAPX": 0.0},
+            ...     max_allocations={"VBIRX": 60.0, "VBLAX": 60.0, "VTAPX": 30.0}
             ... )
         """
         self.logger: logging.Logger = logger or logging.getLogger("Bondit.Portfolio")
-        
+
         # Set default allocations if none provided
         default_allocations = {
-            "Long-Term Government Bond": 25.0,
-            "Long-Term Investment-Grade Corporate Bond": 20.0,
-            "Intermediate-Term Government Bond": 15.0,
-            "Intermediate-Term Investment-Grade Corporate Bond": 15.0,
-            "Short-Term Government Bond": 5.0,
-            "Short-Term Investment-Grade Corporate Bond": 5.0,
-            "TIPS": 10.0,
-            "Intermediate-Term National Municipal Bond": 5.0,
-            "Intermediate-Term State Municipal Bond": 5.0,
-            "Short-Term National Municipal Bond": 2.5,
-            "Short-Term State Municipal Bond": 2.5,
-            "International Bond": 10.0,
+            "VBIRX": 40.0,  # Vanguard Short-Term Bond Index Fund
+            "VBLAX": 40.0,  # Vanguard Long-Term Bond Index Fund
+            "VTAPX": 20.0,  # Vanguard Short-Term Inflation-Protected Securities Index Fund
         }
-        
-        self.allocations: Dict[str, float] = allocations.copy() if allocations else default_allocations.copy()
-        
+
+        self.allocations: Dict[str, float] = (
+            allocations.copy() if allocations else default_allocations.copy()
+        )
+
         # Set minimum allocations to 0% for all assets
         default_min_allocations = {asset: 0.0 for asset in self.allocations.keys()}
         self.min_allocations: Dict[str, float] = (
             min_allocations.copy() if min_allocations else default_min_allocations
         )
-        
+
         # Set maximum allocations based on the provided constraints
         default_max_allocations = {
-            "Long-Term Government Bond": 30.0,
-            "Long-Term Investment-Grade Corporate Bond": 25.0,
-            "Intermediate-Term Government Bond": 20.0,
-            "Intermediate-Term Investment-Grade Corporate Bond": 20.0,
-            "Short-Term Government Bond": 10.0,
-            "Short-Term Investment-Grade Corporate Bond": 10.0,
-            "TIPS": 15.0,
-            "Intermediate-Term National Municipal Bond": 10.0,
-            "Intermediate-Term State Municipal Bond": 10.0,
-            "Short-Term National Municipal Bond": 5.0,
-            "Short-Term State Municipal Bond": 5.0,
-            "International Bond": 15.0,
+            "VBIRX": 60.0,  # Allow up to 60% in Short-Term Bonds
+            "VBLAX": 60.0,  # Allow up to 60% in Long-Term Bonds
+            "VTAPX": 30.0,  # Allow up to 30% in TIPS
         }
         self.max_allocations: Dict[str, float] = (
             max_allocations.copy() if max_allocations else default_max_allocations
@@ -155,7 +139,12 @@ class Portfolio:
         )
 
     def adjust_allocation(
-        self, asset_type: str, amount: float, rule_key: str, rule_weight: float, rationale: str = ""
+        self,
+        asset_type: str,
+        amount: float,
+        rule_key: str,
+        rule_weight: float,
+        rationale: str = "",
     ) -> None:
         """
         Adjust the allocation for a specific asset type.

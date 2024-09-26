@@ -74,75 +74,35 @@ class DecisionRules:
 
         if z_score > upper_threshold:
             # Rates are significantly higher than usual; reduce duration
-            action = f"Reduced long-duration bond allocations by {adjustment:.2f}%."
+            action = f"Reduced allocation to VBLAX (Long-Term Bonds) by {adjustment:.2f}% and increased allocation to VBIRX (Short-Term Bonds) by the same amount."
             rationale = "High interest rates can lead to falling bond prices; reducing duration mitigates risk."
 
             # Reduce long-term bonds
-            long_term_assets = [
-                "Long-Term Government Bond",
-                "Long-Term Investment-Grade Corporate Bond",
-            ]
-            for asset in long_term_assets:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(long_term_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
+            engine.adjust_allocation(
+                "VBLAX", -adjustment, indicator_key, rule_weight, rationale
+            )
 
             # Increase short-term bonds
-            short_term_assets = [
-                "Short-Term Government Bond",
-                "Short-Term Investment-Grade Corporate Bond",
-                "Short-Term National Municipal Bond",
-                "Short-Term State Municipal Bond",
-            ]
-            for asset in short_term_assets:
-                engine.adjust_allocation(
-                    asset,
-                    adjustment / len(short_term_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
+            engine.adjust_allocation(
+                "VBIRX", adjustment, indicator_key, rule_weight, rationale
+            )
 
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
         elif z_score < lower_threshold:
             # Rates are significantly lower than usual; increase duration
-            action = f"Increased long-duration bond allocations by {adjustment:.2f}%."
+            action = f"Increased allocation to VBLAX (Long-Term Bonds) by {adjustment:.2f}% and reduced allocation to VBIRX (Short-Term Bonds) by the same amount."
             rationale = "Low interest rates can lead to rising bond prices; increasing duration can enhance returns."
 
             # Increase long-term bonds
-            long_term_assets = [
-                "Long-Term Government Bond",
-                "Long-Term Investment-Grade Corporate Bond",
-            ]
-            for asset in long_term_assets:
-                engine.adjust_allocation(
-                    asset,
-                    adjustment / len(long_term_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
+            engine.adjust_allocation(
+                "VBLAX", adjustment, indicator_key, rule_weight, rationale
+            )
 
             # Decrease short-term bonds
-            short_term_assets = [
-                "Short-Term Government Bond",
-                "Short-Term Investment-Grade Corporate Bond",
-                "Short-Term National Municipal Bond",
-                "Short-Term State Municipal Bond",
-            ]
-            for asset in short_term_assets:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(short_term_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
+            engine.adjust_allocation(
+                "VBIRX", -adjustment, indicator_key, rule_weight, rationale
+            )
 
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
@@ -186,29 +146,25 @@ class DecisionRules:
 
         if composite_change > upper_threshold:
             # Allocate more to TIPS
-            desired_tips_alloc = min(20.0, engine.portfolio.allocations.get("TIPS", 0.0) + adjustment_amount)
-            adjustment = desired_tips_alloc - engine.portfolio.allocations.get("TIPS", 0.0)
+            desired_tips_alloc = min(
+                20.0, engine.portfolio.allocations.get("VTAPX", 0.0) + adjustment_amount
+            )
+            adjustment = desired_tips_alloc - engine.portfolio.allocations.get(
+                "VTAPX", 0.0
+            )
 
             if adjustment > 0:
-                action = f"Increased TIPS allocation by {adjustment:.2f}%."
+                action = f"Increased allocation to VTAPX (TIPS) by {adjustment:.2f}%."
                 rationale = "High inflation reduces real returns on nominal bonds; TIPS provide inflation protection."
 
                 engine.adjust_allocation(
-                    "TIPS", adjustment, cpi_key, rule_weight, rationale
+                    "VTAPX", adjustment, cpi_key, rule_weight, rationale
                 )
 
                 # Decrease nominal bonds proportionally
-                nominal_bonds = [
-                    "Long-Term Government Bond",
-                    "Long-Term Investment-Grade Corporate Bond",
-                    "Intermediate-Term Government Bond",
-                    "Intermediate-Term Investment-Grade Corporate Bond",
-                    "Short-Term Government Bond",
-                    "Short-Term Investment-Grade Corporate Bond",
-                    # Include other nominal bonds as appropriate
-                ]
+                nominal_bonds = ["VBIRX", "VBLAX"]
                 for asset in nominal_bonds:
-                    reduction = (adjustment / len(nominal_bonds))
+                    reduction = adjustment / len(nominal_bonds)
                     engine.adjust_allocation(
                         asset, -reduction, cpi_key, rule_weight, rationale
                     )
@@ -216,30 +172,22 @@ class DecisionRules:
                 engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
         elif composite_change < lower_threshold:
-            # Reduce TIPS, increase Nominal Bonds
-            current_tips_alloc = engine.portfolio.allocations.get("TIPS", 0.0)
+            # Reduce TIPS, increase nominal bonds
+            current_tips_alloc = engine.portfolio.allocations.get("VTAPX", 0.0)
             adjustment = min(adjustment_amount, current_tips_alloc)
 
             if adjustment > 0:
-                action = f"Reduced TIPS allocation by {adjustment:.2f}% and increased nominal bond allocations by the same amount."
+                action = f"Reduced allocation to VTAPX (TIPS) by {adjustment:.2f}% and increased allocations to VBIRX and VBLAX by {adjustment / 2:.2f}% each."
                 rationale = "Low inflation makes nominal bonds more attractive; reducing TIPS allocation accordingly."
 
                 engine.adjust_allocation(
-                    "TIPS", -adjustment, cpi_key, rule_weight, rationale
+                    "VTAPX", -adjustment, cpi_key, rule_weight, rationale
                 )
 
                 # Increase nominal bonds proportionally
-                nominal_bonds = [
-                    "Long-Term Government Bond",
-                    "Long-Term Investment-Grade Corporate Bond",
-                    "Intermediate-Term Government Bond",
-                    "Intermediate-Term Investment-Grade Corporate Bond",
-                    "Short-Term Government Bond",
-                    "Short-Term Investment-Grade Corporate Bond",
-                    # Include other nominal bonds as appropriate
-                ]
+                nominal_bonds = ["VBIRX", "VBLAX"]
                 for asset in nominal_bonds:
-                    increase = (adjustment / len(nominal_bonds))
+                    increase = adjustment / len(nominal_bonds)
                     engine.adjust_allocation(
                         asset, increase, cpi_key, rule_weight, rationale
                     )
@@ -279,28 +227,25 @@ class DecisionRules:
 
         if change > upper_threshold:
             # Inflation expectations are rising; allocate more to TIPS
-            desired_tips_alloc = min(20.0, engine.portfolio.allocations.get("TIPS", 0.0) + adjustment_amount)
-            adjustment = desired_tips_alloc - engine.portfolio.allocations.get("TIPS", 0.0)
+            desired_tips_alloc = min(
+                20.0, engine.portfolio.allocations.get("VTAPX", 0.0) + adjustment_amount
+            )
+            adjustment = desired_tips_alloc - engine.portfolio.allocations.get(
+                "VTAPX", 0.0
+            )
 
             if adjustment > 0:
-                action = f"Increased TIPS allocation by {adjustment:.2f}%."
+                action = f"Increased allocation to VTAPX (TIPS) by {adjustment:.2f}%."
                 rationale = "Rising inflation expectations reduce real returns on nominal bonds; increasing TIPS hedges against inflation."
 
                 engine.adjust_allocation(
-                    "TIPS", adjustment, indicator_key, rule_weight, rationale
+                    "VTAPX", adjustment, indicator_key, rule_weight, rationale
                 )
 
                 # Decrease nominal bonds proportionally
-                nominal_bonds = [
-                    "Long-Term Government Bond",
-                    "Long-Term Investment-Grade Corporate Bond",
-                    "Intermediate-Term Government Bond",
-                    "Intermediate-Term Investment-Grade Corporate Bond",
-                    "Short-Term Government Bond",
-                    "Short-Term Investment-Grade Corporate Bond",
-                ]
+                nominal_bonds = ["VBIRX", "VBLAX"]
                 for asset in nominal_bonds:
-                    reduction = (adjustment / len(nominal_bonds))
+                    reduction = adjustment / len(nominal_bonds)
                     engine.adjust_allocation(
                         asset, -reduction, indicator_key, rule_weight, rationale
                     )
@@ -308,28 +253,21 @@ class DecisionRules:
                 engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif change < lower_threshold:
             # Inflation expectations are falling; allocate more to Nominal Bonds
-            current_tips_alloc = engine.portfolio.allocations.get("TIPS", 0.0)
+            current_tips_alloc = engine.portfolio.allocations.get("VTAPX", 0.0)
             adjustment = min(adjustment_amount, current_tips_alloc)
 
             if adjustment > 0:
-                action = f"Reduced TIPS allocation by {adjustment:.2f}% and increased nominal bond allocations by the same amount."
+                action = f"Reduced allocation to VTAPX (TIPS) by {adjustment:.2f}% and increased allocations to VBIRX and VBLAX by {adjustment / 2:.2f}% each."
                 rationale = "Falling inflation expectations make nominal bonds more attractive; reducing TIPS allocation accordingly."
 
                 engine.adjust_allocation(
-                    "TIPS", -adjustment, indicator_key, rule_weight, rationale
+                    "VTAPX", -adjustment, indicator_key, rule_weight, rationale
                 )
 
                 # Increase nominal bonds proportionally
-                nominal_bonds = [
-                    "Long-Term Government Bond",
-                    "Long-Term Investment-Grade Corporate Bond",
-                    "Intermediate-Term Government Bond",
-                    "Intermediate-Term Investment-Grade Corporate Bond",
-                    "Short-Term Government Bond",
-                    "Short-Term Investment-Grade Corporate Bond",
-                ]
+                nominal_bonds = ["VBIRX", "VBLAX"]
                 for asset in nominal_bonds:
-                    increase = (adjustment / len(nominal_bonds))
+                    increase = adjustment / len(nominal_bonds)
                     engine.adjust_allocation(
                         asset, increase, indicator_key, rule_weight, rationale
                     )
@@ -371,71 +309,30 @@ class DecisionRules:
 
         if change < lower_threshold:
             # Yield spread is narrowing significantly (flattening yield curve)
-            action = (
-                f"Increased allocation to Long-Term Government Bonds by {adjustment:.2f}%."
-            )
-            rationale = "Narrowing yield spread signals economic slowdown; long-term government bonds offer safety."
+            action = f"Increased allocation to VBLAX (Long-Term Bonds) by {adjustment:.2f}% and reduced allocation to VBIRX (Short-Term Bonds) by the same amount."
+            rationale = "Narrowing yield spread signals economic slowdown; long-term bonds may offer better returns."
 
             engine.adjust_allocation(
-                "Long-Term Government Bond",
-                adjustment,
-                indicator_key,
-                rule_weight,
-                rationale,
+                "VBLAX", adjustment, indicator_key, rule_weight, rationale
             )
 
-            # Reduce allocation to short-term bonds
-            short_term_assets = [
-                "Short-Term Government Bond",
-                "Short-Term Investment-Grade Corporate Bond",
-            ]
-            for asset in short_term_assets:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(short_term_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
+            engine.adjust_allocation(
+                "VBIRX", -adjustment, indicator_key, rule_weight, rationale
+            )
 
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         elif change > upper_threshold:
             # Yield spread is widening significantly (steepening yield curve)
-            action = (
-                f"Increased allocation to Investment-Grade Corporate Bonds by {adjustment:.2f}%, "
-                f"and reduced allocation to Long-Term Government Bonds by {adjustment:.2f}%."
+            action = f"Increased allocation to VBIRX (Short-Term Bonds) by {adjustment:.2f}% and reduced allocation to VBLAX (Long-Term Bonds) by the same amount."
+            rationale = "Widening yield spread indicates economic expansion; short-term bonds reduce interest rate risk."
+
+            engine.adjust_allocation(
+                "VBIRX", adjustment, indicator_key, rule_weight, rationale
             )
-            rationale = "Widening yield spread indicates economic expansion; increasing exposure to corporate bonds can enhance returns."
 
-            # Increase allocation to investment-grade corporate bonds
-            corporate_bonds = [
-                "Long-Term Investment-Grade Corporate Bond",
-                "Intermediate-Term Investment-Grade Corporate Bond",
-                "Short-Term Investment-Grade Corporate Bond",
-            ]
-            for asset in corporate_bonds:
-                engine.adjust_allocation(
-                    asset,
-                    adjustment / len(corporate_bonds),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-
-            # Reduce allocation to government bonds
-            government_bonds = [
-                "Long-Term Government Bond",
-                "Intermediate-Term Government Bond",
-                "Short-Term Government Bond",
-            ]
-            for asset in government_bonds:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(government_bonds),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
+            engine.adjust_allocation(
+                "VBLAX", -adjustment, indicator_key, rule_weight, rationale
+            )
 
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
@@ -471,120 +368,32 @@ class DecisionRules:
         rule_name = "Recession Probability Adjustment"
 
         if current_value > upper_threshold:
-            # High recession probability; shift to safer assets
-            action = (
-                f"Increased allocations to Long-Term Government Bonds and Intermediate-Term Government Bonds by {adjustment / 4:.2f}% each, "
-                f"and reduced allocations to Long-Term Investment-Grade Corporate Bonds and Intermediate-Term Investment-Grade Corporate Bonds by {adjustment / 4:.2f}% each."
+            # High recession probability; increase duration
+            action = f"Increased allocation to VBLAX (Long-Term Bonds) by {adjustment:.2f}% and reduced allocation to VBIRX (Short-Term Bonds) by the same amount."
+            rationale = "High recession probability may lead to lower interest rates; increasing duration can enhance returns."
+
+            engine.adjust_allocation(
+                "VBLAX", adjustment, indicator_key, rule_weight, rationale
             )
-            rationale = "High recession probability increases default risk on corporate bonds; shifting to safer assets reduces credit risk."
 
-            safe_assets = [
-                "Long-Term Government Bond",
-                "Intermediate-Term Government Bond",
-            ]
-            riskier_assets = [
-                "Long-Term Investment-Grade Corporate Bond",
-                "Intermediate-Term Investment-Grade Corporate Bond",
-            ]
-            for asset in safe_assets:
-                engine.adjust_allocation(
-                    asset,
-                    adjustment / len(safe_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-            for asset in riskier_assets:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(riskier_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-
-            # Optionally, consider increasing allocation to safe municipal bonds
-            # Uncomment the following lines if desired
-            # engine.adjust_allocation(
-            #     "Intermediate-Term National Municipal Bond",
-            #     adjustment / 8,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
-            # engine.adjust_allocation(
-            #     "Intermediate-Term State Municipal Bond",
-            #     adjustment / 8,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
-            # engine.adjust_allocation(
-            #     "Short-Term National Municipal Bond",
-            #     adjustment / 8,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
+            engine.adjust_allocation(
+                "VBIRX", -adjustment, indicator_key, rule_weight, rationale
+            )
 
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
         elif current_value < lower_threshold:
-            # Low recession probability; shift to higher-yielding assets
-            action = (
-                f"Increased allocations to Long-Term Investment-Grade Corporate Bonds and Intermediate-Term Investment-Grade Corporate Bonds by {adjustment / 4:.2f}% each, "
-                f"and reduced allocations to Long-Term Government Bonds and Intermediate-Term Government Bonds by {adjustment / 4:.2f}% each."
+            # Low recession probability; reduce duration
+            action = f"Increased allocation to VBIRX (Short-Term Bonds) by {adjustment:.2f}% and reduced allocation to VBLAX (Long-Term Bonds) by the same amount."
+            rationale = "Low recession probability suggests rising interest rates; reducing duration mitigates interest rate risk."
+
+            engine.adjust_allocation(
+                "VBIRX", adjustment, indicator_key, rule_weight, rationale
             )
-            rationale = "Low recession probability reduces default risk on corporate bonds; increasing exposure to higher-yielding assets can enhance returns."
 
-            higher_yield_assets = [
-                "Long-Term Investment-Grade Corporate Bond",
-                "Intermediate-Term Investment-Grade Corporate Bond",
-            ]
-            safe_assets = [
-                "Long-Term Government Bond",
-                "Intermediate-Term Government Bond",
-            ]
-            for asset in higher_yield_assets:
-                engine.adjust_allocation(
-                    asset,
-                    adjustment / len(higher_yield_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-            for asset in safe_assets:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(safe_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-
-            # Optionally, consider reducing allocation to safe municipal bonds
-            # Uncomment the following lines if desired
-            # engine.adjust_allocation(
-            #     "Intermediate-Term National Municipal Bond",
-            #     -adjustment / 8,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
-            # engine.adjust_allocation(
-            #     "Intermediate-Term State Municipal Bond",
-            #     -adjustment / 8,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
-            # engine.adjust_allocation(
-            #     "Short-Term National Municipal Bond",
-            #     -adjustment / 8,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
+            engine.adjust_allocation(
+                "VBLAX", -adjustment, indicator_key, rule_weight, rationale
+            )
 
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
@@ -602,6 +411,9 @@ class DecisionRules:
         """
         Adjust portfolio allocations based on changes in credit spreads.
         """
+        # Since we cannot adjust between government and corporate bonds within VBIRX and VBLAX,
+        # we'll approximate by adjusting between these two funds based on overall risk sentiment.
+
         indicator_key = "credit_spread"
         change = engine._validate_indicator_data(
             indicator_key, "weighted", "weighted_change"
@@ -616,119 +428,41 @@ class DecisionRules:
             indicator_key
         ].config.thresholds
 
-        # Retrieve rule weight from IndicatorConfig
         rule_weight = engine.get_rule_weight(indicator_key)
         adjustment = min(engine.max_adjustment * rule_weight, abs(change))
 
         rule_name = "Credit Spread Adjustment"
 
         if change > upper_threshold:
-            # Credit spreads have widened; reduce exposure to corporate bonds
-            action = (
-                f"Reduced allocations to Long-Term Investment-Grade Corporate Bonds and Intermediate-Term Investment-Grade Corporate Bonds by {adjustment / 2:.2f}% each, "
-                f"and increased allocations to Long-Term Government Bonds and Intermediate-Term Government Bonds by {adjustment / 2:.2f}% each."
+            # Credit spreads have widened; reduce exposure to credit risk
+            action = f"Increased allocation to VBIRX (Short-Term Bonds) by {adjustment:.2f}% and reduced allocation to VBLAX (Long-Term Bonds) by the same amount."
+            rationale = "Widening credit spreads indicate increased default risk; reducing duration mitigates risk."
+
+            engine.adjust_allocation(
+                "VBIRX", adjustment, indicator_key, rule_weight, rationale
             )
-            rationale = "Widening credit spreads indicate increased default risk; reducing exposure to corporate bonds lowers credit risk."
-
-            riskier_assets = [
-                "Long-Term Investment-Grade Corporate Bond",
-                "Intermediate-Term Investment-Grade Corporate Bond",
-            ]
-            safer_assets = [
-                "Long-Term Government Bond",
-                "Intermediate-Term Government Bond",
-            ]
-            for asset in riskier_assets:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(riskier_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-            for asset in safer_assets:
-                engine.adjust_allocation(
-                    asset,
-                    adjustment / len(safer_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-
-            # Optionally, adjust municipal bonds based on credit spread changes
-            # Uncomment the following lines if desired
-            # engine.adjust_allocation(
-            #     "Intermediate-Term National Municipal Bond",
-            #     -adjustment / 4,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
-            # engine.adjust_allocation(
-            #     "Intermediate-Term State Municipal Bond",
-            #     -adjustment / 4,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
-
+            engine.adjust_allocation(
+                "VBLAX", -adjustment, indicator_key, rule_weight, rationale
+            )
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
         elif change < lower_threshold:
-            # Credit spreads have narrowed; increase exposure to corporate bonds
-            action = (
-                f"Increased allocations to Long-Term Investment-Grade Corporate Bonds and Intermediate-Term Investment-Grade Corporate Bonds by {adjustment / 2:.2f}% each, "
-                f"and reduced allocations to Long-Term Government Bonds and Intermediate-Term Government Bonds by {adjustment / 2:.2f}% each."
+            # Credit spreads have narrowed; increase exposure to potential higher returns
+            action = f"Increased allocation to VBLAX (Long-Term Bonds) by {adjustment:.2f}% and reduced allocation to VBIRX (Short-Term Bonds) by the same amount."
+            rationale = "Narrowing credit spreads indicate improved credit conditions; increasing duration may enhance returns."
+
+            engine.adjust_allocation(
+                "VBLAX", adjustment, indicator_key, rule_weight, rationale
             )
-            rationale = "Narrowing credit spreads indicate improved corporate credit conditions; increasing exposure can enhance returns."
-
-            riskier_assets = [
-                "Long-Term Investment-Grade Corporate Bond",
-                "Intermediate-Term Investment-Grade Corporate Bond",
-            ]
-            safer_assets = [
-                "Long-Term Government Bond",
-                "Intermediate-Term Government Bond",
-            ]
-            for asset in riskier_assets:
-                engine.adjust_allocation(
-                    asset,
-                    adjustment / len(riskier_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-            for asset in safer_assets:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(safer_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-
-            # Optionally, adjust municipal bonds based on credit spread changes
-            # Uncomment the following lines if desired
-            # engine.adjust_allocation(
-            #     "Intermediate-Term National Municipal Bond",
-            #     adjustment / 4,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
-            # engine.adjust_allocation(
-            #     "Intermediate-Term State Municipal Bond",
-            #     adjustment / 4,
-            #     indicator_key,
-            #     rule_weight,
-            #     rationale,
-            # )
-
+            engine.adjust_allocation(
+                "VBIRX", -adjustment, indicator_key, rule_weight, rationale
+            )
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
-            # Credit spread is stable
             action = "No adjustment made."
-            rationale = "Credit spreads are stable, indicating consistent corporate credit conditions."
+            rationale = (
+                "Credit spreads are stable, indicating consistent credit conditions."
+            )
 
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
@@ -749,7 +483,6 @@ class DecisionRules:
             indicator_key
         ].config.thresholds
 
-        # Retrieve rule weight from IndicatorConfig
         rule_weight = engine.get_rule_weight(indicator_key)
         adjustment = min(engine.max_adjustment * rule_weight, abs(change))
 
@@ -757,71 +490,30 @@ class DecisionRules:
 
         if change > upper_threshold:
             # GDP growth is strong; reduce duration
-            action = (
-                f"Reduced allocations to Long-Term Government Bonds and Long-Term Investment-Grade Corporate Bonds by {adjustment / 2:.2f}% each, "
-                f"and increased allocations to Short-Term Government Bonds by {adjustment:.2f}%."
-            )
+            action = f"Reduced allocation to VBLAX (Long-Term Bonds) by {adjustment:.2f}% and increased allocation to VBIRX (Short-Term Bonds) by the same amount."
             rationale = "Strong GDP growth suggests economic expansion; reducing duration mitigates interest rate risk."
 
-            # Reduce long-term bonds
-            long_term_assets = [
-                "Long-Term Government Bond",
-                "Long-Term Investment-Grade Corporate Bond",
-            ]
-            for asset in long_term_assets:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(long_term_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-
-            # Increase short-term bonds
             engine.adjust_allocation(
-                "Short-Term Government Bond",
-                adjustment,
-                indicator_key,
-                rule_weight,
-                rationale,
+                "VBLAX", -adjustment, indicator_key, rule_weight, rationale
             )
-
+            engine.adjust_allocation(
+                "VBIRX", adjustment, indicator_key, rule_weight, rationale
+            )
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
         elif change < lower_threshold:
             # GDP growth is weak; increase duration
-            action = (
-                f"Increased allocations to Long-Term Government Bonds and Long-Term Investment-Grade Corporate Bonds by {adjustment / 2:.2f}% each, "
-                f"and reduced allocations to Short-Term Government Bonds by {adjustment:.2f}%."
-            )
+            action = f"Increased allocation to VBLAX (Long-Term Bonds) by {adjustment:.2f}% and reduced allocation to VBIRX (Short-Term Bonds) by the same amount."
             rationale = "Weak GDP growth indicates economic slowdown; increasing duration favors stability."
 
-            # Increase long-term bonds
-            long_term_assets = [
-                "Long-Term Government Bond",
-                "Long-Term Investment-Grade Corporate Bond",
-            ]
-            for asset in long_term_assets:
-                engine.adjust_allocation(
-                    asset,
-                    adjustment / len(long_term_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-
-            # Decrease short-term bonds
             engine.adjust_allocation(
-                "Short-Term Government Bond",
-                -adjustment,
-                indicator_key,
-                rule_weight,
-                rationale,
+                "VBLAX", adjustment, indicator_key, rule_weight, rationale
             )
-
+            engine.adjust_allocation(
+                "VBIRX", -adjustment, indicator_key, rule_weight, rationale
+            )
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
-            # GDP growth is stable
             action = "No adjustment made."
             rationale = "Stable GDP growth indicates steady economic conditions."
 
@@ -844,7 +536,6 @@ class DecisionRules:
             indicator_key
         ].config.thresholds
 
-        # Retrieve rule weight from IndicatorConfig
         rule_weight = engine.get_rule_weight(indicator_key)
         adjustment = min(engine.max_adjustment * rule_weight, abs(change))
 
@@ -852,75 +543,30 @@ class DecisionRules:
 
         if change > upper_threshold:
             # Unemployment rate has increased significantly; increase duration
-            action = (
-                f"Increased allocations to Long-Term Government Bonds, Long-Term Investment-Grade Corporate Bonds, "
-                f"and Intermediate-Term Government Bonds by {adjustment / 3:.2f}% each, "
-                f"and reduced allocations to Short-Term Government Bonds by {adjustment:.2f}%."
-            )
+            action = f"Increased allocation to VBLAX (Long-Term Bonds) by {adjustment:.2f}% and reduced allocation to VBIRX (Short-Term Bonds) by the same amount."
             rationale = "Rising unemployment may indicate economic weakness; increasing duration favors safer bonds."
 
-            # Increase long-duration bonds
-            long_duration_assets = [
-                "Long-Term Government Bond",
-                "Long-Term Investment-Grade Corporate Bond",
-                "Intermediate-Term Government Bond",
-            ]
-            for asset in long_duration_assets:
-                engine.adjust_allocation(
-                    asset,
-                    adjustment / len(long_duration_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-
-            # Decrease short-term bonds
             engine.adjust_allocation(
-                "Short-Term Government Bond",
-                -adjustment,
-                indicator_key,
-                rule_weight,
-                rationale,
+                "VBLAX", adjustment, indicator_key, rule_weight, rationale
             )
-
+            engine.adjust_allocation(
+                "VBIRX", -adjustment, indicator_key, rule_weight, rationale
+            )
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
 
         elif change < lower_threshold:
             # Unemployment rate has decreased significantly; reduce duration
-            action = (
-                f"Reduced allocations to Long-Term Government Bonds, Long-Term Investment-Grade Corporate Bonds, "
-                f"and Intermediate-Term Government Bonds by {adjustment / 3:.2f}% each, "
-                f"and increased allocations to Short-Term Government Bonds by {adjustment:.2f}%."
-            )
+            action = f"Reduced allocation to VBLAX (Long-Term Bonds) by {adjustment:.2f}% and increased allocation to VBIRX (Short-Term Bonds) by the same amount."
             rationale = "Falling unemployment indicates economic strength; reducing duration mitigates interest rate risk."
 
-            # Reduce long-duration bonds
-            long_duration_assets = [
-                "Long-Term Government Bond",
-                "Long-Term Investment-Grade Corporate Bond",
-                "Intermediate-Term Government Bond",
-            ]
-            for asset in long_duration_assets:
-                engine.adjust_allocation(
-                    asset,
-                    -adjustment / len(long_duration_assets),
-                    indicator_key,
-                    rule_weight,
-                    rationale,
-                )
-
-            # Increase short-term bonds
             engine.adjust_allocation(
-                "Short-Term Government Bond",
-                adjustment,
-                indicator_key,
-                rule_weight,
-                rationale,
+                "VBLAX", -adjustment, indicator_key, rule_weight, rationale
             )
-
+            engine.adjust_allocation(
+                "VBIRX", adjustment, indicator_key, rule_weight, rationale
+            )
             engine.logger.info(f"{rule_name}: {action} Rationale: {rationale}")
         else:
-            # Unemployment rate is stable
             action = "No adjustment made."
             rationale = (
                 "Employment levels are stable, suggesting steady economic conditions."

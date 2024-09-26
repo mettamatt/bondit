@@ -78,16 +78,9 @@ class DecisionEngine:
 
         # Define strategic baseline allocations (total should sum to 100%)
         self.baseline_allocations: Dict[str, float] = {
-            "Intermediate-Term Government Bond": 15.0,
-            "Intermediate-Term Investment-Grade Corporate Bond": 10.0,
-            "Intermediate-Term National Municipal Bond": 10.0,
-            "Intermediate-Term State Municipal Bond": 5.0,
-            "Long-Term Government Bond": 10.0,
-            "Long-Term Investment-Grade Corporate Bond": 10.0,
-            "Short-Term Government Bond": 10.0,
-            "Short-Term Investment-Grade Corporate Bond": 5.0,
-            "Short-Term National Municipal Bond": 5.0,
-            "International Bond": 10.0,
+            "VBIRX": 40.0,  # Vanguard Short-Term Bond Index Fund
+            "VBLAX": 40.0,  # Vanguard Long-Term Bond Index Fund
+            "VTAPX": 20.0,  # Vanguard Short-Term Inflation-Protected Securities Index Fund
         }
 
         if not math.isclose(
@@ -100,20 +93,13 @@ class DecisionEngine:
 
         # Define asset risk levels (higher number indicates higher risk)
         self.asset_risk_levels: Dict[str, float] = {
-            "Intermediate-Term Government Bond": 2.0,
-            "Intermediate-Term Investment-Grade Corporate Bond": 3.0,
-            "Intermediate-Term National Municipal Bond": 2.5,
-            "Intermediate-Term State Municipal Bond": 2.5,
-            "Long-Term Government Bond": 2.5,
-            "Long-Term Investment-Grade Corporate Bond": 3.5,
-            "Short-Term Government Bond": 1.0,
-            "Short-Term Investment-Grade Corporate Bond": 1.5,
-            "Short-Term National Municipal Bond": 1.5,
-            "International Bond": 3.5,
+            "VBIRX": 1.0,  # Lower risk due to short duration
+            "VBLAX": 2.5,  # Higher risk due to long duration
+            "VTAPX": 1.5,  # Moderate risk with inflation protection
         }
 
         # Set maximum acceptable average portfolio risk level
-        self.max_portfolio_risk: float = 2.5
+        self.max_portfolio_risk: float = 2.0
 
         # Initialize analysis results
         self.analysis_results: Dict[str, Dict[str, Any]] = {}
@@ -231,12 +217,10 @@ class DecisionEngine:
 
         # Updated Portfolio Allocations Section
         report_lines.append("### **Updated Portfolio Allocations**\n")
-        report_lines.append("| **Asset**                            | **Allocation** |")
-        report_lines.append(
-            "|--------------------------------------|-----------------|"
-        )
+        report_lines.append("| **Asset**             | **Allocation** |")
+        report_lines.append("|-----------------------|----------------|")
         for asset, allocation in self.portfolio.get_allocations().items():
-            report_lines.append(f"| {asset:<36} | {allocation:.2f}%          |")
+            report_lines.append(f"| {asset:<21} | {allocation:.2f}%        |")
         report_lines.append("\n---\n")
 
         # Economic Indicators Overview Section
@@ -264,10 +248,10 @@ class DecisionEngine:
         report_lines.append("### **Rebalancing Scenario**\n")
         report_lines.append("#### **Portfolio Adjustments**\n")
         report_lines.append(
-            "| **Adjustment Type**                | **Asset**                      | **Action**                                     | **Amount** | **Rationale**                                                                                         |"
+            "| **Adjustment Type**                | **Asset**    | **Action**                                     | **Amount** | **Rationale**                                                                                         |"
         )
         report_lines.append(
-            "|------------------------------------|--------------------------------|------------------------------------------------|------------|-------------------------------------------------------------------------------------------------------|"
+            "|------------------------------------|--------------|------------------------------------------------|------------|-------------------------------------------------------------------------------------------------------|"
         )
 
         for adjustment in self.adjustments:
