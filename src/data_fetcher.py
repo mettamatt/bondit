@@ -4,15 +4,16 @@
 data_fetcher.py
 
 This module defines the `DataFetcher` class, responsible for retrieving and managing economic 
-data from the Federal Reserve Economic Data (FRED) API. It ensures data is up-to-date 
-by checking release schedules and retrieving new data as necessary, while also caching data locally 
-to optimize performance.
+data from the Federal Reserve Economic Data (FRED) API. It allows optional specification of 
+start and end years to retrieve data within a specific date range. The class ensures data 
+is up-to-date by checking release schedules and retrieving new data as necessary, while 
+also caching data locally to optimize performance.
 
 Main Functionalities:
 - Making API requests to the FRED service.
 - Retrieving release IDs and release dates for specific economic data series.
 - Checking if cached data is outdated or missing, based on the series' frequency (daily, monthly, quarterly).
-- Fetching data from the API, focusing on the most recent 6 years.
+- Fetching data from the API for specified or default date ranges.
 - Storing and managing the retrieved data.
 
 Note:
@@ -41,6 +42,12 @@ class DataFetcher(StorageMixin):
     This class handles the retrieval of data, ensuring it is up-to-date based on the release schedule,
     and caches the data locally to optimize performance. It utilizes the `StorageMixin` to manage JSON data
     storage for release dates.
+
+    Enhanced Features:
+    - Optionally specify a start and end year when fetching data.
+    - Check if the requested date range is available in the cache.
+    - Fetch missing data from the FRED API if the cache doesn't cover the requested range.
+    - Update the cache with new data to include the newly fetched date range.
     """
 
     BASE_URL: str = "https://api.stlouisfed.org/fred"
@@ -65,7 +72,7 @@ class DataFetcher(StorageMixin):
         storage: FredDataStorage,
         api_key: str,
         release_dates_file: str = "./data/fred_release_dates.json",
-        logger: Optional[logging.Logger] = None,
+        logger_instance: Optional[logging.Logger] = None,
         indicators: Optional[List[IndicatorConfig]] = None,
     ) -> None:
         """
@@ -76,12 +83,12 @@ class DataFetcher(StorageMixin):
             api_key (str): API key for authenticating with the FRED API.
             release_dates_file (str, optional): Path to the JSON file storing release dates.
                 Defaults to "./data/fred_release_dates.json".
-            logger (Optional[logging.Logger], optional): Logger instance for logging operations.
+            logger_instance (Optional[logging.Logger], optional): Logger instance for logging operations.
                 If None, a default logger is used.
             indicators (Optional[List[IndicatorConfig]], optional): List of indicator configurations.
                 If None, the centralized `INDICATORS` list is used.
         """
-        super().__init__(logger=logger)
+        super().__init__(logger=logger_instance)
         self.storage: FredDataStorage = storage
         self.api_key: str = api_key
         self.storage_file: str = release_dates_file
@@ -89,7 +96,9 @@ class DataFetcher(StorageMixin):
         self.release_dates: Dict[str, str] = cast(
             Dict[str, str], self._load_data(default_data={})
         )
-        self.logger: logging.Logger = logger or logging.getLogger("Bondit.DataFetcher")
+        self.logger: logging.Logger = logger_instance or logging.getLogger(
+            "Bondit.DataFetcher"
+        )
         self.logger.debug("DataFetcher initialized successfully.")
 
         # Map each series_id to its corresponding IndicatorConfig
@@ -236,23 +245,25 @@ class DataFetcher(StorageMixin):
             self.logger.error(f"API request failed for endpoint {endpoint}: {e}")
             raise
 
-    def _fetch_from_api(self, series_id: str) -> List[Dict[str, Any]]:
+    def _fetch_from_api(
+        self, series_id: str, start_date: str, end_date: str
+    ) -> List[Dict[str, Any]]:
         """
-        Fetch the most recent 6 years of data from the FRED API for the specified series.
+        Fetch data from the FRED API for the specified series and date range.
 
         Args:
             series_id (str): The ID of the economic data series to fetch.
+            start_date (str): The start date in "YYYY-MM-DD" format.
+            end_date (str): The end date in "YYYY-MM-DD" format.
 
         Returns:
             List[Dict[str, Any]]: A list of observations for the specified series.
         """
         params = {
             "series_id": series_id,
-            "observation_start": (datetime.now() - relativedelta(years=6)).strftime(
-                "%Y-%m-%d"
-            ),
-            "observation_end": datetime.now().strftime("%Y-%m-%d"),
-            "sort_order": "desc",
+            "observation_start": start_date,
+            "observation_end": end_date,
+            "sort_order": "asc",
         }
         self.logger.debug(
             f"Fetching data from API for series {series_id} with params {params}."
@@ -271,7 +282,7 @@ class DataFetcher(StorageMixin):
             )
             return []
 
-        valid_observations = []
+        valid_observations: List[Dict[str, Any]] = []
         for obs in observations:
             if isinstance(obs, dict) and "date" in obs and "value" in obs:
                 valid_observations.append(obs)
@@ -285,78 +296,47 @@ class DataFetcher(StorageMixin):
         )
         return valid_observations
 
-    def _is_data_missing(self, data: List[Dict[str, Any]], series_id: str) -> bool:
+    def _is_data_missing(
+        self, data: List[Dict[str, Any]], start_date: datetime, end_date: datetime
+    ) -> bool:
         """
-        Determine if the cached data is missing or outdated for a specific series.
+        Determine if the cached data is missing or outdated for a specific series and date range.
 
         Args:
             data (List[Dict[str, Any]]): The cached data for the series.
-            series_id (str): The ID of the economic data series.
+            start_date (datetime): The requested start date.
+            end_date (datetime): The requested end date.
 
         Returns:
             bool: True if data is missing or outdated, False otherwise.
         """
         if not data:
             self.logger.warning(
-                f"No cached data available for series {series_id}. Data is considered missing."
+                "No cached data available for series. Data is considered missing."
             )
             return True
 
         try:
-            last_date_str = data[-1]["date"]
-            last_date = datetime.strptime(last_date_str, "%Y-%m-%d")
+            dates_in_cache = [
+                datetime.strptime(entry["date"], "%Y-%m-%d") for entry in data
+            ]
+            earliest_cached_date = min(dates_in_cache)
+            latest_cached_date = max(dates_in_cache)
             self.logger.debug(
-                f"Last cached date for series {series_id}: {last_date.strftime('%Y-%m-%d')}"
+                f"Cached data range: {earliest_cached_date.strftime('%Y-%m-%d')} to {latest_cached_date.strftime('%Y-%m-%d')}"
             )
         except (KeyError, ValueError) as e:
-            self.logger.error(f"Invalid data format for series {series_id}. Error: {e}")
+            self.logger.error(f"Invalid data format in cache. Error: {e}")
             return True
 
-        today = datetime.now()
-        release_date_str = self._get_release_date(series_id)
-
-        if release_date_str:
-            try:
-                release_date = datetime.strptime(release_date_str, "%Y-%m-%d")
-                self.logger.debug(
-                    f"Next release date for series {series_id}: {release_date.strftime('%Y-%m-%d')}"
-                )
-                if today >= release_date > last_date:
-                    self.logger.info(
-                        f"New data likely available for series {series_id}: Released on {release_date_str}"
-                    )
-                    return True
-                else:
-                    self.logger.info(
-                        f"No new data needed for series {series_id}: Will check again on {release_date_str}"
-                    )
-                    return False
-            except ValueError as e:
-                self.logger.error(
-                    f"Invalid release date format for series {series_id}: {release_date_str}. Error: {e}"
-                )
-
-        # Fallback logic if no valid release date is available
-        indicator_config = self.series_config_map.get(series_id)
-        if indicator_config:
-            frequency_delay = self._get_frequency_delay(indicator_config.indicator_type)
-        else:
-            self.logger.warning(
-                f"No configuration found for series {series_id}. Using default delay."
-            )
-            frequency_delay = self.MONTHLY_DELAY
-
-        fallback_date = last_date + timedelta(days=frequency_delay)
-        self.logger.debug(
-            f"Fallback date for series {series_id}: {fallback_date.strftime('%Y-%m-%d')}"
-        )
-        if today > fallback_date:
+        if earliest_cached_date > start_date or latest_cached_date < end_date:
             self.logger.info(
-                f"Data for {series_id} is older than expected (Fallback date: {fallback_date.strftime('%Y-%m-%d')}). Refreshing data."
+                "Cached data does not fully cover the requested date range."
             )
             return True
 
-        self.logger.debug(f"Data for series {series_id} is up-to-date.")
+        # For simplicity, assume data is up-to-date if cache covers the range
+        self.logger.debug("Cached data covers the requested date range.")
         return False
 
     def _adjust_release_date(self, series_id: str, fallback_date: datetime) -> None:
@@ -373,18 +353,27 @@ class DataFetcher(StorageMixin):
             f"Adjusted release date for series {series_id} to {fallback_date.strftime('%Y-%m-%d')}."
         )
 
-    def fetch_data(self, series_id: str) -> List[Dict[str, Any]]:
+    def fetch_data(
+        self,
+        series_id: str,
+        start_year: Optional[int] = None,
+        end_year: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
         """
-        Fetch economic data for a specified series ID.
+        Fetch economic data for a specified series ID within an optional date range.
 
-        Uses cached data if up-to-date; otherwise, retrieves new data from the FRED API.
+        Uses cached data if up-to-date and covers the requested date range; otherwise, retrieves
+        new data from the FRED API.
 
-        This method ensures that new data is retrieved when the release date has expired.
-        If new data is not available after the release date has passed, it adjusts the release date
-        to allow for future checks sooner, ensuring that data updates are not missed due to inaccurate release dates.
+        This method ensures that new data is retrieved when the requested date range isn't fully
+        covered by the cached data. If new data is fetched, the cache is updated accordingly.
 
         Args:
             series_id (str): The ID of the economic data series to fetch.
+            start_year (Optional[int], optional): The start year for the data retrieval.
+                Defaults to 6 years before the current year if not provided, but not earlier than 2006.
+            end_year (Optional[int], optional): The end year for the data retrieval.
+                Defaults to the current year if not provided.
 
         Returns:
             List[Dict[str, Any]]: A list of data points for the specified series.
@@ -395,112 +384,122 @@ class DataFetcher(StorageMixin):
         """
         try:
             self.logger.info(f"Initiating data fetch for series: {series_id}")
+
+            # Determine start_date and end_date with the earliest limit set to 2006-01-01
+            # Hardcoded earliest date to align with the "5-Year Breakeven Inflation Rate" indicator's data availability
+            earliest_possible_start_date = "2006-01-01"
+
+            if start_year:
+                start_date = f"{start_year}-01-01"
+                # Enforce global start date limit
+                if datetime.strptime(start_date, "%Y-%m-%d") < datetime.strptime(
+                    earliest_possible_start_date, "%Y-%m-%d"
+                ):
+                    start_date = earliest_possible_start_date
+            else:
+                start_date = (datetime.now() - relativedelta(years=6)).strftime(
+                    "%Y-%m-%d"
+                )
+                if datetime.strptime(start_date, "%Y-%m-%d") < datetime.strptime(
+                    earliest_possible_start_date, "%Y-%m-%d"
+                ):
+                    start_date = earliest_possible_start_date
+
+            if end_year:
+                end_date = f"{end_year}-12-31"
+            else:
+                end_date = datetime.now().strftime("%Y-%m-%d")
+
+            self.logger.debug(f"Requested date range: {start_date} to {end_date}")
+
+            start_date_dt = datetime.strptime(start_date, "%Y-%m-%d")
+            end_date_dt = datetime.strptime(end_date, "%Y-%m-%d")
+
             cached_data = self.storage.get_data(series_id)
 
-            indicator_config = self.series_config_map.get(series_id)
-            indicator_type = (
-                indicator_config.indicator_type if indicator_config else "MONTHLY"
-            )
-            frequency_delay = self._get_frequency_delay(indicator_type)
-
-            if cached_data and not self._is_data_missing(cached_data, series_id):
-                self.logger.info(f"Using cached data for series: {series_id}")
-                return cached_data
-
-            self.logger.info(
-                f"Cached data missing or outdated for series: {series_id}. Fetching new data."
-            )
-
-            release_id = self._get_release_id(series_id)
-            if release_id is not None:
-                params = {
-                    "release_id": release_id,
-                    "limit": 1,
-                    "order_by": "release_date",
-                    "sort_order": "desc",
-                }
-                self.logger.debug(
-                    f"Fetching release dates for series {series_id} with release_id {release_id}."
+            if not cached_data:
+                self.logger.info(
+                    f"No cached data for series: {series_id}. Fetching data."
                 )
-                response = self._make_api_request("release/dates", params)
-                release_dates = response.get("release_dates", [])
-                if isinstance(release_dates, list) and release_dates:
-                    new_release_date = release_dates[0].get("date", "")
-                    if new_release_date:
-                        self._update_release_date(series_id, new_release_date)
-                    else:
-                        self.logger.warning(
-                            f"No valid date found in release_dates for release_id: {release_id}"
+                series_data = self._fetch_from_api(series_id, start_date, end_date)
+                self.storage.replace_data(series_id, series_data)
+                return series_data
+
+            # Check if cached data covers the requested date range
+            dates_in_cache = [
+                datetime.strptime(entry["date"], "%Y-%m-%d") for entry in cached_data
+            ]
+            earliest_cached_date = min(dates_in_cache)
+            latest_cached_date = max(dates_in_cache)
+
+            self.logger.debug(
+                f"Cached data covers from {earliest_cached_date.strftime('%Y-%m-%d')} "
+                f"to {latest_cached_date.strftime('%Y-%m-%d')}"
+            )
+
+            if (
+                earliest_cached_date <= start_date_dt
+                and latest_cached_date >= end_date_dt
+            ):
+                self.logger.info(f"Using cached data for series: {series_id}")
+                # Filter cached_data to the requested date range
+                series_data = [
+                    entry
+                    for entry in cached_data
+                    if start_date_dt
+                    <= datetime.strptime(entry["date"], "%Y-%m-%d")
+                    <= end_date_dt
+                ]
+                return series_data
+            else:
+                self.logger.info(
+                    f"Cached data does not fully cover the requested date range for series: {series_id}. Fetching missing data."
+                )
+                # Fetch the entire requested range
+                series_data = self._fetch_from_api(series_id, start_date, end_date)
+
+                if series_data:
+                    # Merge new data with cached data, avoiding duplicates
+                    combined_data_dict: Dict[str, Dict[str, Any]] = {
+                        entry["date"]: entry for entry in cached_data
+                    }
+                    for entry in series_data:
+                        combined_data_dict[entry["date"]] = (
+                            entry  # Update or add new entry
                         )
+
+                    # Convert back to a list and sort by date
+                    combined_data: List[Dict[str, Any]] = sorted(
+                        combined_data_dict.values(), key=lambda x: x["date"]
+                    )
+
+                    self.storage.replace_data(series_id, combined_data)
+                    self.logger.info(
+                        f"Cache updated with new data for series: {series_id}"
+                    )
+
+                    # Filter combined data to the requested date range
+                    filtered_data = [
+                        entry
+                        for entry in combined_data
+                        if start_date_dt
+                        <= datetime.strptime(entry["date"], "%Y-%m-%d")
+                        <= end_date_dt
+                    ]
+                    return filtered_data
                 else:
                     self.logger.warning(
-                        f"No release dates found for release_id: {release_id}"
+                        f"No new data fetched for series {series_id}. Returning cached data if available."
                     )
-            else:
-                self.logger.warning(
-                    f"Could not find release ID for series: {series_id}"
-                )
-
-            series_data = self._fetch_from_api(series_id)
-            self.logger.debug(
-                f"Retrieved {len(series_data)} data points from API for series {series_id}."
-            )
-
-            if series_data:
-                if cached_data:
-                    try:
-                        last_cached_date_str = cached_data[-1]["date"]
-                        last_cached_date = datetime.strptime(
-                            last_cached_date_str, "%Y-%m-%d"
-                        )
-                        new_entries = [
-                            entry
-                            for entry in series_data
-                            if datetime.strptime(entry["date"], "%Y-%m-%d")
-                            > last_cached_date
-                        ]
-                        if new_entries:
-                            self.logger.info(
-                                f"New data found for series {series_id}: {len(new_entries)} new records."
-                            )
-                            self.storage.replace_data(series_id, series_data)
-                            self.logger.info(
-                                f"Data for series {series_id} saved successfully."
-                            )
-                        else:
-                            self.logger.info(
-                                f"No new data found for series {series_id}. Adjusting release date for future checks."
-                            )
-                            fallback_date = last_cached_date + timedelta(
-                                days=frequency_delay
-                            )
-                            self._adjust_release_date(series_id, fallback_date)
-                    except (KeyError, ValueError) as e:
-                        self.logger.error(
-                            f"Error processing cached data for series {series_id}: {e}"
-                        )
-                        fallback_date = datetime.now() + timedelta(days=frequency_delay)
-                        self._adjust_release_date(series_id, fallback_date)
-                else:
-                    self.storage.replace_data(series_id, series_data)
-                    self.logger.info(f"Data for series {series_id} saved successfully.")
-            else:
-                self.logger.warning(
-                    f"No data points found for series {series_id} from API."
-                )
-
-                if cached_data:
-                    try:
-                        last_date_str = cached_data[-1]["date"]
-                        last_date = datetime.strptime(last_date_str, "%Y-%m-%d")
-                        fallback_date = last_date + timedelta(days=frequency_delay)
-                        self._adjust_release_date(series_id, fallback_date)
-                    except (KeyError, ValueError) as e:
-                        self.logger.error(
-                            f"Failed to adjust release date for series {series_id}: {e}"
-                        )
-
-            return series_data
+                    # Return available cached data within the requested range
+                    series_data = [
+                        entry
+                        for entry in cached_data
+                        if start_date_dt
+                        <= datetime.strptime(entry["date"], "%Y-%m-%d")
+                        <= end_date_dt
+                    ]
+                    return series_data
 
         except Exception as e:
             self.logger.error(

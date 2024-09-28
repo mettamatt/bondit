@@ -1,7 +1,7 @@
 # src/config.py
 
-from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -34,6 +34,9 @@ class IndicatorConfig:
             A weight assigned to the rule associated with this indicator.
             Determines the significance of this rule in portfolio adjustments.
             Higher weights imply greater impact.
+        earliest_date (Optional[str]):
+            The earliest available date for the indicator data in "YYYY-MM-DD" format.
+            This should be populated once and remains static.
     """
 
     series_id: str
@@ -45,6 +48,7 @@ class IndicatorConfig:
     calculation_method: str
     thresholds: Tuple[float, float]
     rule_weight: float
+    earliest_date: Optional[str] = field(default=None)
 
 
 # Centralized list of all economic indicators with their configurations
@@ -60,6 +64,7 @@ INDICATORS: List[IndicatorConfig] = [
         calculation_method="z_score",
         thresholds=(1.0, -1.0),  # Z-score thresholds for trend signals
         rule_weight=1.0,  # Highest priority
+        earliest_date="1954-12-01",
     ),
     # Consumer Price Index (CPI)
     IndicatorConfig(
@@ -72,6 +77,7 @@ INDICATORS: List[IndicatorConfig] = [
         calculation_method="year_over_year_change",
         thresholds=(2.5, 2.0),  # Inflation targets (upper, lower)
         rule_weight=0.9,
+        earliest_date="1913-03-01",
     ),
     # Personal Consumption Expenditures Price Index (PCE)
     IndicatorConfig(
@@ -84,6 +90,7 @@ INDICATORS: List[IndicatorConfig] = [
         calculation_method="year_over_year_change",
         thresholds=(2.5, 2.0),  # Inflation targets
         rule_weight=0.9,
+        earliest_date="1947-04-01",
     ),
     # 5-Year Breakeven Inflation Rate
     IndicatorConfig(
@@ -96,6 +103,7 @@ INDICATORS: List[IndicatorConfig] = [
         calculation_method="basis_points_change",
         thresholds=(10, -10),  # Thresholds in basis points
         rule_weight=0.8,
+        earliest_date="2006-01-01",
     ),
     # Yield Spread
     IndicatorConfig(
@@ -108,6 +116,7 @@ INDICATORS: List[IndicatorConfig] = [
         calculation_method="basis_points_change",
         thresholds=(50, -50),  # Thresholds in basis points
         rule_weight=0.7,
+        earliest_date="1990-01-01",
     ),
     # Recession Probabilities
     IndicatorConfig(
@@ -120,6 +129,7 @@ INDICATORS: List[IndicatorConfig] = [
         calculation_method="current_value",
         thresholds=(25.0, 15.0),  # Thresholds in percentage
         rule_weight=0.6,
+        earliest_date="1984-01-01",
     ),
     # Credit Spread
     IndicatorConfig(
@@ -132,6 +142,7 @@ INDICATORS: List[IndicatorConfig] = [
         calculation_method="basis_points_change",
         thresholds=(50, -50),  # Thresholds in basis points
         rule_weight=0.5,
+        earliest_date="1994-01-01",
     ),
     # Real Gross Domestic Product (GDP)
     IndicatorConfig(
@@ -144,6 +155,7 @@ INDICATORS: List[IndicatorConfig] = [
         calculation_method="cagr",
         thresholds=(3.0, 2.0),  # Thresholds in percentage points
         rule_weight=0.4,
+        earliest_date="1947-01-01",
     ),
     # Unemployment Rate
     IndicatorConfig(
@@ -156,5 +168,6 @@ INDICATORS: List[IndicatorConfig] = [
         calculation_method="absolute_change",
         thresholds=(0.5, -0.5),  # Thresholds in percentage points
         rule_weight=0.3,  # Lowest priority
+        earliest_date="1948-01-01",
     ),
 ]

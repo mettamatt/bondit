@@ -33,10 +33,11 @@ Functions:
 import logging
 import os
 import sys
-from typing import Any, Dict, List, cast
+from typing import Any, Dict, List, Optional, cast
 
 import yaml
 
+from .config import IndicatorConfig
 from .data_fetcher import DataFetcher
 from .data_storage import FredDataStorage
 from .indicators import EconomicIndicator
@@ -186,19 +187,28 @@ def initialize_data_storage_and_fetcher(
 
 
 def collect_economic_indicators(
-    fetcher: DataFetcher, indicators_config: List[Any], logger: logging.Logger
+    fetcher: DataFetcher,
+    indicators_config: List[IndicatorConfig],
+    logger: logging.Logger,
+    start_year: Optional[int] = None,
+    end_year: Optional[int] = None,
 ) -> Dict[str, EconomicIndicator]:
     """
     Collect economic data and create EconomicIndicator instances.
 
     This function iterates through the list of economic indicators defined in the configuration,
-    fetches their data, validates the fetched data, and creates corresponding EconomicIndicator
-    instances. It logs successes and handles any data validation issues gracefully.
+    fetches their data within the specified date range, validates the fetched data,
+    and creates corresponding EconomicIndicator instances. It logs successes and
+    handles any data validation issues gracefully.
 
     Args:
         fetcher (DataFetcher): Initialized DataFetcher instance.
-        indicators_config (List[Any]): List of indicator configurations.
+        indicators_config (List[IndicatorConfig]): List of indicator configurations.
         logger (logging.Logger): Logger instance for logging.
+        start_year (Optional[int], optional): The start year for data fetching.
+            Defaults to None.
+        end_year (Optional[int], optional): The end year for data fetching.
+            Defaults to None.
 
     Returns:
         Dict[str, EconomicIndicator]: Dictionary of successfully created EconomicIndicator instances.
@@ -215,13 +225,14 @@ def collect_economic_indicators(
         internal_key = indicator_config.internal_key
         try:
             logger.debug(f"Fetching data for {name} (Series ID: {series_id})")
-            data = fetcher.fetch_data(series_id)
+            data = fetcher.fetch_data(
+                series_id, start_year=start_year, end_year=end_year
+            )
             if not isinstance(data, list) or not data:
                 raise ValueError(
                     f"Economic data for {series_id} ({name}) is invalid or empty."
                 )
             economic_data[internal_key] = data
-            # logger.info(f"Successfully fetched {len(data)} data points for {name}.")
 
             # Create EconomicIndicator instance with the fetched data
             economic_indicator = EconomicIndicator(config=indicator_config, data=data)
