@@ -1,6 +1,7 @@
 # src/config.py
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 
@@ -171,3 +172,28 @@ INDICATORS: List[IndicatorConfig] = [
         earliest_date="1948-01-01",
     ),
 ]
+
+
+# Programmatically compute FIXED_START_DATE as the maximum of all earliest_date values
+def compute_fixed_start_date(indicators: List[IndicatorConfig]) -> str:
+    """
+    Compute the FIXED_START_DATE as the latest earliest_date among all indicators.
+
+    Returns:
+        str: The FIXED_START_DATE in "YYYY-MM-DD" format.
+    """
+    earliest_dates = [
+        datetime.strptime(indicator.earliest_date, "%Y-%m-%d")
+        for indicator in indicators
+        if indicator.earliest_date is not None
+    ]
+    if not earliest_dates:
+        raise ValueError(
+            "No earliest_date found in indicators to compute FIXED_START_DATE."
+        )
+
+    fixed_start_date = max(earliest_dates)
+    return fixed_start_date.strftime("%Y-%m-%d")
+
+
+FIXED_START_DATE: str = compute_fixed_start_date(INDICATORS)

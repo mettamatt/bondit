@@ -5,7 +5,7 @@ data_fetcher.py
 
 This module defines the `DataFetcher` class, responsible for retrieving and managing economic 
 data from the Federal Reserve Economic Data (FRED) API. It retrieves data within a fixed date range 
-from 2006-01-01 to the current date to align with the "5-Year Breakeven Inflation Rate" indicator's 
+from FIXED_START_DATE to the current date to align with the "5-Year Breakeven Inflation Rate" indicator's 
 data availability. The class ensures data is up-to-date by checking release schedules and retrieving 
 new data as necessary, while also caching data locally to optimize performance.
 
@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional, TypeVar, cast
 
 import requests
 
-from .config import INDICATORS, IndicatorConfig
+from .config import FIXED_START_DATE, INDICATORS, IndicatorConfig
 from .data_storage import FredDataStorage, StorageMixin
 
 logger = logging.getLogger("Bondit.DataFetcher")
@@ -43,7 +43,7 @@ class DataFetcher(StorageMixin):
     storage for release dates.
 
     Enhanced Features:
-    - Fixed date range from 2006-01-01 to the current date to align with the "5-Year Breakeven Inflation Rate" indicator's data availability.
+    - Fixed date range from FIXED_START_DATE to the current date to align with the "5-Year Breakeven Inflation Rate" indicator's data availability.
     - Check if the cached data is available and up-to-date.
     - Fetch missing data from the FRED API if the cache doesn't cover the fixed date range.
     - Update the cache with new data to include the newly fetched date range.
@@ -65,9 +65,6 @@ class DataFetcher(StorageMixin):
         "MONTHLY": MONTHLY_DELAY,
         "QUARTERLY": QUARTERLY_DELAY,
     }
-
-    # Fixed start date aligned with the "5-Year Breakeven Inflation Rate" indicator's data availability
-    FIXED_START_DATE: str = "2006-01-01"
 
     def __init__(
         self,
@@ -331,7 +328,7 @@ class DataFetcher(StorageMixin):
             self.logger.error(f"Invalid data format in cache. Error: {e}")
             return True
 
-        fixed_start_date = datetime.strptime(self.FIXED_START_DATE, "%Y-%m-%d")
+        fixed_start_date = datetime.strptime(FIXED_START_DATE, "%Y-%m-%d")
 
         if earliest_cached_date > fixed_start_date or latest_cached_date < end_date:
             self.logger.info("Cached data does not fully cover the fixed date range.")
@@ -381,8 +378,8 @@ class DataFetcher(StorageMixin):
         try:
             self.logger.info(f"Initiating data fetch for series: {series_id}")
 
-            # Fixed date range from 2006-01-01 to today to align with the "5-Year Breakeven Inflation Rate" indicator's data availability
-            start_date = self.FIXED_START_DATE
+            # Fixed date range from FIXED_START_DATE to today to align with the "5-Year Breakeven Inflation Rate" indicator's data availability
+            start_date = FIXED_START_DATE
             end_date = datetime.now().strftime("%Y-%m-%d")
 
             self.logger.debug(f"Fixed date range: {start_date} to {end_date}")
