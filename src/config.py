@@ -2,7 +2,30 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from enum import Enum
+from typing import List, Optional, Tuple
+
+
+class IndicatorType(Enum):
+    DAILY = "DAILY"
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+
+
+class CalculationMethod(Enum):
+    PERCENTAGE_CHANGE = "percentage_change"
+    BASIS_POINTS_CHANGE = "basis_points_change"
+    Z_SCORE = "z_score"
+    ABSOLUTE_CHANGE = "absolute_change"
+    YEAR_OVER_YEAR_CHANGE = "year_over_year_change"
+    CAGR = "cagr"
+    CURRENT_VALUE = "current_value"
+
+
+@dataclass
+class TimeFrameWeight:
+    years: int
+    weight: float
 
 
 @dataclass
@@ -15,20 +38,12 @@ class IndicatorConfig:
         name (str): A human-readable name for the economic indicator.
         internal_key (str): A key used internally within the application to reference the indicator.
         description (str): A brief description of the economic indicator.
-        indicator_type (str): The frequency type of the indicator data (e.g., 'MONTHLY', 'DAILY', 'QUARTERLY').
-        time_frame_weights (Dict[int, float]):
-            A dictionary mapping time frames (in years) to their respective weights.
+        indicator_type (IndicatorType): The frequency type of the indicator data (e.g., 'MONTHLY', 'DAILY', 'QUARTERLY').
+        time_frame_weights (List[TimeFrameWeight]):
+            A list of TimeFrameWeight instances mapping time frames (in years) to their respective weights.
             These weights determine the importance of each time frame during analysis.
-        calculation_method (str):
+        calculation_method (CalculationMethod):
             The method used to calculate the change for this indicator.
-            Possible values include:
-            - `'percentage_change'`
-            - `'basis_points_change'`
-            - `'z_score'`
-            - `'absolute_change'`
-            - `'year_over_year_change'`
-            - `'cagr'`
-            - `'current_value'`
         thresholds (Tuple[float, float]):
             A tuple containing the upper and lower threshold values specific to the calculation method for generating trend signals.
         rule_weight (float):
@@ -37,16 +52,15 @@ class IndicatorConfig:
             Higher weights imply greater impact.
         earliest_date (Optional[str]):
             The earliest available date for the indicator data in "YYYY-MM-DD" format.
-            This should be populated once and remains static.
     """
 
     series_id: str
     name: str
     internal_key: str
     description: str
-    indicator_type: str
-    time_frame_weights: Dict[int, float]
-    calculation_method: str
+    indicator_type: IndicatorType
+    time_frame_weights: List[TimeFrameWeight]
+    calculation_method: CalculationMethod
     thresholds: Tuple[float, float]
     rule_weight: float
     earliest_date: Optional[str] = field(default=None)
@@ -60,9 +74,13 @@ INDICATORS: List[IndicatorConfig] = [
         name="Federal Funds Rate",
         internal_key="fed_funds",
         description="Federal Funds Rate",
-        indicator_type="MONTHLY",
-        time_frame_weights={1: 0.30, 3: 0.40, 5: 0.30},
-        calculation_method="z_score",
+        indicator_type=IndicatorType.MONTHLY,
+        time_frame_weights=[
+            TimeFrameWeight(years=1, weight=0.30),
+            TimeFrameWeight(years=3, weight=0.40),
+            TimeFrameWeight(years=5, weight=0.30),
+        ],
+        calculation_method=CalculationMethod.Z_SCORE,
         thresholds=(1.0, -1.0),  # Z-score thresholds for trend signals
         rule_weight=1.0,  # Highest priority
         earliest_date="1954-12-01",
@@ -73,9 +91,11 @@ INDICATORS: List[IndicatorConfig] = [
         name="Consumer Price Index (CPI)",
         internal_key="cpi",
         description="Composite CPI & PCE Inflation",
-        indicator_type="MONTHLY",
-        time_frame_weights={1: 1.0},  # Focus on 1-year for YoY change
-        calculation_method="year_over_year_change",
+        indicator_type=IndicatorType.MONTHLY,
+        time_frame_weights=[
+            TimeFrameWeight(years=1, weight=1.0),  # Focus on 1-year for YoY change
+        ],
+        calculation_method=CalculationMethod.YEAR_OVER_YEAR_CHANGE,
         thresholds=(2.5, 2.0),  # Inflation targets (upper, lower)
         rule_weight=0.9,
         earliest_date="1913-03-01",
@@ -86,9 +106,11 @@ INDICATORS: List[IndicatorConfig] = [
         name="Personal Consumption Expenditures Price Index (PCE)",
         internal_key="pce",
         description="Composite CPI & PCE Inflation",
-        indicator_type="MONTHLY",
-        time_frame_weights={1: 1.0},
-        calculation_method="year_over_year_change",
+        indicator_type=IndicatorType.MONTHLY,
+        time_frame_weights=[
+            TimeFrameWeight(years=1, weight=1.0),
+        ],
+        calculation_method=CalculationMethod.YEAR_OVER_YEAR_CHANGE,
         thresholds=(2.5, 2.0),  # Inflation targets
         rule_weight=0.9,
         earliest_date="1947-04-01",
@@ -99,9 +121,11 @@ INDICATORS: List[IndicatorConfig] = [
         name="5-Year Breakeven Inflation Rate",
         internal_key="breakeven_inflation",
         description="Breakeven Inflation",
-        indicator_type="DAILY",
-        time_frame_weights={1: 1.0},  # Focus on recent data
-        calculation_method="basis_points_change",
+        indicator_type=IndicatorType.DAILY,
+        time_frame_weights=[
+            TimeFrameWeight(years=1, weight=1.0),  # Focus on recent data
+        ],
+        calculation_method=CalculationMethod.BASIS_POINTS_CHANGE,
         thresholds=(10, -10),  # Thresholds in basis points
         rule_weight=0.8,
         earliest_date="2006-01-01",
@@ -112,9 +136,13 @@ INDICATORS: List[IndicatorConfig] = [
         name="Yield Spread",
         internal_key="yield_spread",
         description="Yield Spread",
-        indicator_type="DAILY",
-        time_frame_weights={1: 0.20, 3: 0.50, 5: 0.30},
-        calculation_method="basis_points_change",
+        indicator_type=IndicatorType.DAILY,
+        time_frame_weights=[
+            TimeFrameWeight(years=1, weight=0.20),
+            TimeFrameWeight(years=3, weight=0.50),
+            TimeFrameWeight(years=5, weight=0.30),
+        ],
+        calculation_method=CalculationMethod.BASIS_POINTS_CHANGE,
         thresholds=(50, -50),  # Thresholds in basis points
         rule_weight=0.7,
         earliest_date="1990-01-01",
@@ -125,9 +153,11 @@ INDICATORS: List[IndicatorConfig] = [
         name="Recession Probabilities",
         internal_key="recession_prob",
         description="Recession Probability",
-        indicator_type="MONTHLY",
-        time_frame_weights={1: 1.0},  # Focus on recent data
-        calculation_method="current_value",
+        indicator_type=IndicatorType.MONTHLY,
+        time_frame_weights=[
+            TimeFrameWeight(years=1, weight=1.0),  # Focus on recent data
+        ],
+        calculation_method=CalculationMethod.CURRENT_VALUE,
         thresholds=(25.0, 15.0),  # Thresholds in percentage
         rule_weight=0.6,
         earliest_date="1984-01-01",
@@ -138,9 +168,13 @@ INDICATORS: List[IndicatorConfig] = [
         name="Moody's BAA Corporate Bond Yield Minus 10-Year Treasury Yield",
         internal_key="credit_spread",
         description="Credit Spread",
-        indicator_type="MONTHLY",
-        time_frame_weights={1: 0.25, 3: 0.50, 5: 0.25},
-        calculation_method="basis_points_change",
+        indicator_type=IndicatorType.MONTHLY,
+        time_frame_weights=[
+            TimeFrameWeight(years=1, weight=0.25),
+            TimeFrameWeight(years=3, weight=0.50),
+            TimeFrameWeight(years=5, weight=0.25),
+        ],
+        calculation_method=CalculationMethod.BASIS_POINTS_CHANGE,
         thresholds=(50, -50),  # Thresholds in basis points
         rule_weight=0.5,
         earliest_date="1994-01-01",
@@ -151,9 +185,11 @@ INDICATORS: List[IndicatorConfig] = [
         name="Real Gross Domestic Product (GDP)",
         internal_key="gdp",
         description="GDP Growth Rate",
-        indicator_type="QUARTERLY",
-        time_frame_weights={1: 1.0},
-        calculation_method="cagr",
+        indicator_type=IndicatorType.QUARTERLY,
+        time_frame_weights=[
+            TimeFrameWeight(years=1, weight=1.0),
+        ],
+        calculation_method=CalculationMethod.CAGR,
         thresholds=(3.0, 2.0),  # Thresholds in percentage points
         rule_weight=0.4,
         earliest_date="1947-01-01",
@@ -164,9 +200,11 @@ INDICATORS: List[IndicatorConfig] = [
         name="Unemployment Rate",
         internal_key="unrate",
         description="Unemployment Rate",
-        indicator_type="MONTHLY",
-        time_frame_weights={1: 1.0},  # Focus on recent changes
-        calculation_method="absolute_change",
+        indicator_type=IndicatorType.MONTHLY,
+        time_frame_weights=[
+            TimeFrameWeight(years=1, weight=1.0),  # Focus on recent changes
+        ],
+        calculation_method=CalculationMethod.ABSOLUTE_CHANGE,
         thresholds=(0.5, -0.5),  # Thresholds in percentage points
         rule_weight=0.3,  # Lowest priority
         earliest_date="1948-01-01",

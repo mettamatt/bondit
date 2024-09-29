@@ -10,11 +10,11 @@ It handles the loading of data, calculation of statistics, and generation of tre
 
 import logging
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
-from .config import IndicatorConfig
+from .config import FIXED_START_DATE, CalculationMethod, IndicatorConfig, IndicatorType
 
 
 class EconomicIndicator:
@@ -29,8 +29,8 @@ class EconomicIndicator:
     Attributes:
         config (IndicatorConfig): Configuration details for the economic indicator.
         data (pd.DataFrame): Cleaned and processed data for analysis.
-        time_frame_weights (Dict[int, float]): Weights assigned to different time frames for weighted analysis.
-        indicator_type (str): Frequency type of the indicator (e.g., DAILY, MONTHLY, QUARTERLY).
+        time_frame_weights (List[TimeFrameWeight]): Weights assigned to different time frames for weighted analysis.
+        indicator_type (IndicatorType): Frequency type of the indicator (e.g., DAILY, MONTHLY, QUARTERLY).
         name (str): Name of the economic indicator.
         internal_key (str): Internal identifier for the indicator.
         description (str): Description of the economic indicator.
@@ -61,10 +61,14 @@ class EconomicIndicator:
             >>> config = IndicatorConfig(
             ...     name="CPI",
             ...     internal_key="cpi",
-            ...     indicator_type="MONTHLY",
-            ...     calculation_method="percentage_change",
+            ...     indicator_type=IndicatorType.MONTHLY,
+            ...     calculation_method=CalculationMethod.PERCENTAGE_CHANGE,
             ...     thresholds=(2.0, -2.0),
-            ...     time_frame_weights={"1y": 0.5, "3y": 0.3, "5y": 0.2}
+            ...     time_frame_weights=[
+            ...         TimeFrameWeight(years=1, weight=0.5),
+            ...         TimeFrameWeight(years=3, weight=0.3),
+            ...         TimeFrameWeight(years=5, weight=0.2),
+            ...     ]
             ... )
             >>> data = [
             ...     {"date": "2023-09-01", "value": 250.5},
@@ -73,20 +77,22 @@ class EconomicIndicator:
             ... ]
             >>> cpi_indicator = EconomicIndicator(config, data, rebalancing_date="2023-09-01")
         """
-        self.logger = logger or logging.getLogger("Bondit.EconomicIndicator")
-        self.config = config
+        self.logger: logging.Logger = logger or logging.getLogger(
+            "Bondit.EconomicIndicator"
+        )
+        self.config: IndicatorConfig = config
         self.time_frame_weights = config.time_frame_weights
-        self.indicator_type: str = config.indicator_type
-        self.name = config.name
-        self.internal_key = config.internal_key
-        self.description = config.description
+        self.indicator_type: IndicatorType = config.indicator_type
+        self.name: str = config.name
+        self.internal_key: str = config.internal_key
+        self.description: str = config.description
         self.data: pd.DataFrame = pd.DataFrame()
         self.rebalancing_date: pd.Timestamp = (
             pd.to_datetime(rebalancing_date)
             if rebalancing_date
             else pd.Timestamp.today()
         )
-        
+
         # Ensure that rebalancing_date is not before FIXED_START_DATE
         FIXED_START_DATE_DT = pd.to_datetime(FIXED_START_DATE)
         if self.rebalancing_date < FIXED_START_DATE_DT:
@@ -98,6 +104,19 @@ class EconomicIndicator:
             f"Initializing EconomicIndicator for '{self.name}' with rebalancing date {self.rebalancing_date.date()}."
         )
         self.process_data(data)
+
+        # Map calculation methods to their respective functions
+        self.calculation_method_functions: Dict[
+            CalculationMethod, Callable[..., Optional[float]]
+        ] = {
+            CalculationMethod.PERCENTAGE_CHANGE: self._calculate_percentage_change,
+            CalculationMethod.BASIS_POINTS_CHANGE: self._calculate_basis_points_change,
+            CalculationMethod.Z_SCORE: self._calculate_z_score,
+            CalculationMethod.ABSOLUTE_CHANGE: self._calculate_absolute_change,
+            CalculationMethod.YEAR_OVER_YEAR_CHANGE: self._calculate_year_over_year_change,
+            CalculationMethod.CAGR: self._calculate_cagr,
+            CalculationMethod.CURRENT_VALUE: self._use_current_value,
+        }
 
     def process_data(self, data_points: List[Dict[str, Any]]) -> None:
         """
@@ -168,11 +187,11 @@ class EconomicIndicator:
             return None
 
         end_date: pd.Timestamp = self.rebalancing_date
-        
+
         # Compute start_date, but ensure it's not before the earliest date of the data
-        earliest_data_date = self.data.index.min()
-        requested_start_date = end_date - pd.DateOffset(years=years)
-        start_date = max(requested_start_date, earliest_data_date)
+        earliest_data_date: pd.Timestamp = self.data.index.min()
+        requested_start_date: pd.Timestamp = end_date - pd.DateOffset(years=years)
+        start_date: pd.Timestamp = max(requested_start_date, earliest_data_date)
 
         if start_date > end_date:
             self.logger.warning(
@@ -195,7 +214,7 @@ class EconomicIndicator:
         )
         return time_frame_data
 
-    def calculate_statistics(self, data: pd.Series) -> Dict[str, Any]:
+    def calculate_statistics(self, data: pd.Series) -> Dict[str, Optional[float]]:
         """
         Calculate basic statistics for a given data series.
 
@@ -206,7 +225,7 @@ class EconomicIndicator:
             data (pd.Series): Series of numerical values representing the economic indicator.
 
         Returns:
-            Dict[str, Any]: Dictionary containing calculated statistics.
+            Dict[str, Optional[float]]: Dictionary containing calculated statistics.
 
         Example:
             >>> stats = cpi_indicator.calculate_statistics(cpi_data["value"])
@@ -230,14 +249,22 @@ class EconomicIndicator:
                 "z_score": None,
             }
 
+        most_recent_value = data.iloc[0]
+        average = data.mean()
+        median = data.median()
+        min_value = data.min()
+        max_value = data.max()
+        std_dev = data.std()
+        z_score = self.calculate_z_score(data)
+
         stats = {
-            "most_recent_value": data.iloc[0],
-            "average": data.mean(),
-            "median": data.median(),
-            "min": data.min(),
-            "max": data.max(),
-            "std_dev": data.std(),
-            "z_score": self.calculate_z_score(data),
+            "most_recent_value": most_recent_value,
+            "average": average,
+            "median": median,
+            "min": min_value,
+            "max": max_value,
+            "std_dev": std_dev,
+            "z_score": z_score,
         }
         self.logger.debug(f"Statistics for '{self.name}': {stats}")
         return stats
@@ -278,101 +305,87 @@ class EconomicIndicator:
         self.logger.debug(f"Z-score for '{self.name}': {z_score:.2f}")
         return z_score
 
-    def calculate_change(
-        self,
-        current_value: float,
-        start_value: float,
-        data_series: pd.Series,
-        periods_per_year: int,
+    def _calculate_percentage_change(
+        self, current_value: float, start_value: float, **kwargs: Any
     ) -> Optional[float]:
         """
-        Calculate the change based on the specified calculation method.
-
-        Supports various methods such as percentage change, basis points change, z-score,
-        absolute change, year-over-year change, CAGR, and using the current value directly.
+        Calculate percentage change.
 
         Args:
-            current_value (float): The most recent value of the indicator.
-            start_value (float): The value of the indicator at the start of the period.
-            data_series (pd.Series): Series of historical data points.
-            periods_per_year (int): Number of periods per year based on indicator frequency.
+            current_value (float): Current value of the indicator.
+            start_value (float): Value of the indicator at the start of the period.
 
         Returns:
-            Optional[float]: Calculated change value, or None if calculation is not possible.
-
-        Example:
-            >>> change = cpi_indicator.calculate_change(250.5, 245.0, cpi_data["value"], 12)
+            Optional[float]: Percentage change, or None if start_value is zero.
         """
-        method = self.config.calculation_method
-        self.logger.debug(
-            f"Calculating change for '{self.name}' using method '{method}'."
-        )
-
-        # Validate presence of start_value for specific methods
-        if method == "percentage_change":
-            if start_value == 0.0:
-                self.logger.warning(
-                    f"Cannot calculate percentage change for '{self.name}': start_value is zero."
-                )
-                return None
-
-            change = ((current_value - start_value) / start_value) * 100.0
-            self.logger.debug(f"Percentage change for '{self.name}': {change:.2f}%.")
-            return change
-
-        elif method == "basis_points_change":
-            change = (current_value - start_value) * 100  # Basis points
-            self.logger.debug(
-                f"Basis points change for '{self.name}': {change:.2f} bps."
-            )
-            return change
-
-        elif method == "absolute_change":
-            change = current_value - start_value
-            self.logger.debug(f"Absolute change for '{self.name}': {change}")
-            return change
-
-        elif method == "z_score":
-            z_score = self.calculate_z_score(data_series)
-            self.logger.debug(f"Z-score for '{self.name}': {z_score}")
-            return z_score
-
-        elif method == "year_over_year_change":
-            yoy_change = self.calculate_year_over_year_change(data_series)
-            self.logger.debug(f"Year-over-year change for '{self.name}': {yoy_change}")
-            return yoy_change
-
-        elif method == "cagr":
-            cagr = self.calculate_cagr(data_series, periods_per_year)
-            self.logger.debug(f"CAGR for '{self.name}': {cagr}")
-            return cagr
-
-        elif method == "current_value":
-            self.logger.debug(f"Current value for '{self.name}': {current_value}")
-            return current_value
-
-        else:
+        if start_value == 0.0:
             self.logger.warning(
-                f"Unknown calculation method '{method}' for '{self.name}'."
+                f"Cannot calculate percentage change for '{self.name}': start_value is zero."
             )
             return None
+        change = ((current_value - start_value) / start_value) * 100.0
+        self.logger.debug(f"Percentage change for '{self.name}': {change:.2f}%.")
+        return change
 
-    def calculate_year_over_year_change(
-        self, data_series: pd.Series
+    def _calculate_basis_points_change(
+        self, current_value: float, start_value: float, **kwargs: Any
     ) -> Optional[float]:
         """
-        Calculate the year-over-year (YoY) change for the indicator.
+        Calculate change in basis points.
 
-        Compares the most recent value with the value from one year ago to determine growth or decline.
+        Args:
+            current_value (float): Current value of the indicator.
+            start_value (float): Value of the indicator at the start of the period.
+
+        Returns:
+            float: Change in basis points.
+        """
+        change = (current_value - start_value) * 100  # Basis points
+        self.logger.debug(f"Basis points change for '{self.name}': {change:.2f} bps.")
+        return change
+
+    def _calculate_absolute_change(
+        self, current_value: float, start_value: float, **kwargs: Any
+    ) -> Optional[float]:
+        """
+        Calculate absolute change.
+
+        Args:
+            current_value (float): Current value of the indicator.
+            start_value (float): Value of the indicator at the start of the period.
+
+        Returns:
+            float: Absolute change.
+        """
+        change = current_value - start_value
+        self.logger.debug(f"Absolute change for '{self.name}': {change}")
+        return change
+
+    def _calculate_z_score(
+        self, data_series: pd.Series, **kwargs: Any
+    ) -> Optional[float]:
+        """
+        Calculate the z-score for the data series.
+
+        Args:
+            data_series (pd.Series): Series of numerical values.
+
+        Returns:
+            Optional[float]: Z-score, or None if calculation is not possible.
+        """
+        return self.calculate_z_score(data_series)
+
+    def _calculate_year_over_year_change(
+        self, data_series: pd.Series, **kwargs: Any
+    ) -> Optional[float]:
+        """
+        Calculate the year-over-year (YoY) change.
 
         Args:
             data_series (pd.Series): Series of numerical values indexed by date.
 
         Returns:
             Optional[float]: YoY change as a percentage, or None if calculation is not possible.
-
-        Example:
-            >>> yoy = cpi_indicator.calculate_year_over_year_change(cpi_data["value"])
         """
         # Remove NaN values to ensure accurate calculations
         data_series = data_series.dropna()
@@ -434,24 +447,21 @@ class EconomicIndicator:
         )
         return yoy_change
 
-    def calculate_cagr(self, data: pd.Series, periods_per_year: int) -> Optional[float]:
+    def _calculate_cagr(
+        self, data_series: pd.Series, periods_per_year: int, **kwargs: Any
+    ) -> Optional[float]:
         """
         Calculate the Compound Annual Growth Rate (CAGR) for the indicator.
 
-        CAGR represents the mean annual growth rate of an investment over a specified time period longer than one year.
-
         Args:
-            data (pd.Series): Series of numerical values indexed by date.
+            data_series (pd.Series): Series of numerical values indexed by date.
             periods_per_year (int): Number of periods per year based on indicator frequency.
 
         Returns:
             Optional[float]: CAGR as a percentage, or None if calculation is not possible.
-
-        Example:
-            >>> cagr = cpi_indicator.calculate_cagr(cpi_data["value"], 12)
         """
         # Remove NaN values to ensure accurate calculations
-        data = data.dropna()
+        data = data_series.dropna()
 
         if data.empty:
             self.logger.warning(f"No valid data to calculate CAGR for '{self.name}'.")
@@ -486,6 +496,79 @@ class EconomicIndicator:
             self.logger.error(f"CAGR calculation error for '{self.name}': {e}")
             return None
 
+    def _use_current_value(
+        self, current_value: float, start_value: float, **kwargs: Any
+    ) -> Optional[float]:
+        """
+        Use the current value directly as the change.
+
+        Args:
+            current_value (float): Current value of the indicator.
+            start_value (float): Start value (unused).
+
+        Returns:
+            float: Current value.
+        """
+        self.logger.debug(f"Current value for '{self.name}': {current_value}")
+        return current_value
+
+    def calculate_change(
+        self,
+        current_value: Optional[float],
+        start_value: Optional[float],
+        data_series: pd.Series,
+        periods_per_year: int,
+    ) -> Optional[float]:
+        """
+        Calculate the change based on the specified calculation method.
+
+        Utilizes a mapping of calculation methods to their respective functions.
+
+        Args:
+            current_value (Optional[float]): The most recent value of the indicator.
+            start_value (Optional[float]): The value of the indicator at the start of the period.
+            data_series (pd.Series): Series of historical data points.
+            periods_per_year (int): Number of periods per year based on indicator frequency.
+
+        Returns:
+            Optional[float]: Calculated change value, or None if calculation is not possible.
+
+        Example:
+            >>> change = cpi_indicator.calculate_change(250.5, 245.0, cpi_data["value"], 12)
+        """
+        method_function = self.calculation_method_functions.get(
+            self.config.calculation_method
+        )
+        if not method_function:
+            self.logger.warning(
+                f"Unknown calculation method '{self.config.calculation_method}' for '{self.name}'."
+            )
+            return None
+
+        if self.config.calculation_method in {
+            CalculationMethod.PERCENTAGE_CHANGE,
+            CalculationMethod.BASIS_POINTS_CHANGE,
+            CalculationMethod.ABSOLUTE_CHANGE,
+            CalculationMethod.CURRENT_VALUE,
+        }:
+            if current_value is None or start_value is None:
+                self.logger.warning(
+                    f"Current or start value is None for '{self.name}'. Cannot compute change."
+                )
+                return None
+            return method_function(current_value, start_value)
+        elif self.config.calculation_method == CalculationMethod.Z_SCORE:
+            return method_function(data_series)
+        elif self.config.calculation_method == CalculationMethod.YEAR_OVER_YEAR_CHANGE:
+            return method_function(data_series)
+        elif self.config.calculation_method == CalculationMethod.CAGR:
+            return method_function(data_series, periods_per_year)
+        else:
+            self.logger.warning(
+                f"Unhandled calculation method '{self.config.calculation_method}' for '{self.name}'."
+            )
+            return None
+
     def generate_trend_signal(self, change: Optional[float]) -> str:
         """
         Generate a trend signal based on the calculated change and predefined thresholds.
@@ -517,11 +600,11 @@ class EconomicIndicator:
         )
 
         # Determine trend based on calculation method thresholds
-        if self.config.calculation_method in [
-            "year_over_year_change",
-            "cagr",
-            "current_value",
-        ]:
+        if self.config.calculation_method in {
+            CalculationMethod.YEAR_OVER_YEAR_CHANGE,
+            CalculationMethod.CAGR,
+            CalculationMethod.CURRENT_VALUE,
+        }:
             # Thresholds are positive numbers for these methods
             if change > upper_threshold:
                 self.logger.debug(f"Trend signal for '{self.name}': Rising.")
@@ -568,21 +651,23 @@ class EconomicIndicator:
             return {"error": f"No data for indicator '{self.name}'"}
 
         # Determine the number of periods per year based on indicator frequency
-        frequency: str = self.indicator_type
-        if frequency == "QUARTERLY":
+        frequency: IndicatorType = self.indicator_type
+        if frequency == IndicatorType.QUARTERLY:
             periods_per_year = 4
-        elif frequency == "MONTHLY":
+        elif frequency == IndicatorType.MONTHLY:
             periods_per_year = 12
-        elif frequency == "DAILY":
+        elif frequency == IndicatorType.DAILY:
             periods_per_year = 252  # Approximate trading days in a year
         else:
             periods_per_year = 1  # Default to annual
 
         self.logger.debug(
-            f"Analyzing '{self.name}' with frequency '{frequency}' and periods_per_year={periods_per_year}."
+            f"Analyzing '{self.name}' with frequency '{frequency.value}' and periods_per_year={periods_per_year}."
         )
 
-        for period_years, weight in self.time_frame_weights.items():
+        for tf_weight in self.time_frame_weights:
+            period_years = tf_weight.years
+            weight = tf_weight.weight
             self.logger.debug(
                 f"Analyzing '{self.name}' for {period_years}-year period with weight {weight}."
             )
@@ -603,8 +688,11 @@ class EconomicIndicator:
                 float(values.iloc[0]) if not values.empty else None
             )
 
+            start_value: Optional[float] = (
+                float(values.iloc[-1]) if len(values) > 1 else None
+            )
+
             if current_value is not None:
-                start_value = float(values.iloc[-1])
                 # Calculate change based on the specified method
                 change = self.calculate_change(
                     current_value, start_value, values, periods_per_year
@@ -620,20 +708,21 @@ class EconomicIndicator:
 
             # Collect additional metrics if needed
             year_over_year_change = (
-                self.calculate_year_over_year_change(values)
-                if self.config.calculation_method == "year_over_year_change"
+                self._calculate_year_over_year_change(values)
+                if self.config.calculation_method
+                == CalculationMethod.YEAR_OVER_YEAR_CHANGE
                 else None
             )
 
             cagr = (
-                self.calculate_cagr(values, periods_per_year)
-                if self.config.calculation_method == "cagr"
+                self._calculate_cagr(values, periods_per_year)
+                if self.config.calculation_method == CalculationMethod.CAGR
                 else None
             )
 
             z_score = (
                 self.calculate_z_score(values)
-                if self.config.calculation_method == "z_score"
+                if self.config.calculation_method == CalculationMethod.Z_SCORE
                 else None
             )
 
@@ -697,11 +786,13 @@ class EconomicIndicator:
         self.logger.debug(f"Overall trend for '{self.name}': {overall_trend}")
 
         # Add statistics to the results
-        stats: Dict[str, Any] = self.calculate_statistics(self.data["value"])
+        stats: Dict[str, Optional[float]] = self.calculate_statistics(
+            self.data["value"]
+        )
         results["statistics"] = stats
         self.logger.debug(f"Statistics for '{self.name}': {stats}")
 
-        # **Include Rebalancing Date in Results**
+        # Include Rebalancing Date in Results
         results["rebalancing_date"] = self.rebalancing_date.strftime("%Y-%m-%d")
         self.logger.debug(
             f"Rebalancing date for '{self.name}': {results['rebalancing_date']}"

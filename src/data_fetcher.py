@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Optional, TypeVar, cast
 
 import requests
 
-from .config import FIXED_START_DATE, INDICATORS, IndicatorConfig
+from .config import FIXED_START_DATE, INDICATORS, IndicatorConfig, IndicatorType
 from .data_storage import FredDataStorage, StorageMixin
 
 logger = logging.getLogger("Bondit.DataFetcher")
@@ -40,7 +40,7 @@ class DataFetcher(StorageMixin):
     storage for release dates.
 
     Enhanced Features:
-    - Adjusted date range from (FIXED_START_DATE - max_time_frame_years) to the current date to align with 
+    - Adjusted date range from (FIXED_START_DATE - max_time_frame_years) to the current date to align with
       the indicators' data availability requirements.
     - Check if the cached data is available and up-to-date.
     - Fetch missing data from the FRED API if the cache doesn't cover the adjusted date range.
@@ -120,7 +120,10 @@ class DataFetcher(StorageMixin):
         max_years = 0
         for indicator in self.series_config_map.values():
             if indicator.time_frame_weights:
-                indicator_max_year = max(indicator.time_frame_weights.keys())
+                # Corrected: Extract 'years' from each TimeFrameWeight instance
+                indicator_max_year = max(
+                    weight.years for weight in indicator.time_frame_weights
+                )
                 if indicator_max_year > max_years:
                     max_years = indicator_max_year
         return max_years
@@ -141,19 +144,21 @@ class DataFetcher(StorageMixin):
         )
         return release_date
 
-    def _get_frequency_delay(self, indicator_type: str) -> int:
+    def _get_frequency_delay(self, indicator_type: IndicatorType) -> int:
         """
         Retrieve the frequency delay based on the indicator type.
 
         Args:
-            indicator_type (str): The type of the indicator (e.g., 'DAILY', 'MONTHLY', 'QUARTERLY').
+            indicator_type (IndicatorType): The type of the indicator (e.g., 'DAILY', 'MONTHLY', 'QUARTERLY').
 
         Returns:
             int: The number of days to delay before the next data check.
         """
-        delay = self.FREQUENCY_DELAY_MAP.get(indicator_type, self.MONTHLY_DELAY)
+        delay: int = self.FREQUENCY_DELAY_MAP.get(
+            indicator_type.value, self.MONTHLY_DELAY
+        )
         self.logger.debug(
-            f"Frequency delay for indicator type '{indicator_type}': {delay} days."
+            f"Frequency delay for indicator type '{indicator_type.value}': {delay} days."
         )
         return delay
 
@@ -190,6 +195,8 @@ class DataFetcher(StorageMixin):
 
         current_stored_date_str = self.release_dates.get(series_id)
         today = datetime.now()
+
+        adjusted_date: datetime
 
         if current_stored_date_str:
             try:
@@ -436,7 +443,9 @@ class DataFetcher(StorageMixin):
                 self.logger.info(
                     f"No cached data for series: {series_id}. Fetching data."
                 )
-                series_data = self._fetch_from_api(series_id, adjusted_start_date, end_date)
+                series_data = self._fetch_from_api(
+                    series_id, adjusted_start_date, end_date
+                )
                 self.storage.replace_data(series_id, series_data)
                 return series_data
 
@@ -454,7 +463,9 @@ class DataFetcher(StorageMixin):
             except (KeyError, ValueError) as e:
                 self.logger.error(f"Invalid data format in cache. Error: {e}")
                 self.logger.info("Fetching data due to invalid cache format.")
-                series_data = self._fetch_from_api(series_id, adjusted_start_date, end_date)
+                series_data = self._fetch_from_api(
+                    series_id, adjusted_start_date, end_date
+                )
                 self.storage.replace_data(series_id, series_data)
                 return series_data
 
@@ -477,7 +488,9 @@ class DataFetcher(StorageMixin):
                     f"Cached data does not fully cover the adjusted date range for series: {series_id}. Fetching missing data."
                 )
                 # Fetch the entire adjusted date range
-                series_data = self._fetch_from_api(series_id, adjusted_start_date, end_date)
+                series_data = self._fetch_from_api(
+                    series_id, adjusted_start_date, end_date
+                )
 
                 if series_data:
                     # Merge new data with cached data, avoiding duplicates
@@ -522,52 +535,63 @@ class DataFetcher(StorageMixin):
                     ]
                     return series_data
 
-        def _get_release_id(self, series_id: str) -> Optional[int]:
-            """
-            Retrieve the release ID associated with a specific economic data series.
+        except requests.HTTPError as e:
+            self.logger.error(
+                f"HTTP error during data fetch for series {series_id}: {e}"
+            )
+            raise
+        except Exception as e:
+            self.logger.error(
+                f"Unexpected error during data fetch for series {series_id}: {e}"
+            )
+            raise
 
-            Args:
-                series_id (str): The ID of the economic data series.
+    def _get_release_id(self, series_id: str) -> Optional[int]:
+        """
+        Retrieve the release ID associated with a specific economic data series.
 
-            Returns:
-                Optional[int]: The release ID if found, else None.
-            """
-            try:
-                params = {"series_id": series_id}
-                self.logger.debug(
-                    f"Fetching release ID for series {series_id} with params {params}."
-                )
-                response = self._make_api_request("series/release", params)
-                releases = response.get("releases", [])
+        Args:
+            series_id (str): The ID of the economic data series.
 
-                if isinstance(releases, list) and releases:
-                    first_release = releases[0]
-                    release_id_raw = first_release.get("id")
-                    if release_id_raw is not None:
-                        try:
-                            release_id = int(release_id_raw)
-                            self.logger.debug(
-                                f"Found release ID {release_id} for series {series_id}."
-                            )
-                            return release_id
-                        except (ValueError, TypeError):
-                            self.logger.warning(
-                                f"Release ID for series {series_id} is not a valid integer: {release_id_raw}"
-                            )
-                    else:
+        Returns:
+            Optional[int]: The release ID if found, else None.
+        """
+        try:
+            params = {"series_id": series_id}
+            self.logger.debug(
+                f"Fetching release ID for series {series_id} with params {params}."
+            )
+            response = self._make_api_request("series/release", params)
+            releases = response.get("releases", [])
+
+            if isinstance(releases, list) and releases:
+                first_release = releases[0]
+                release_id_raw = first_release.get("id")
+                if release_id_raw is not None:
+                    try:
+                        release_id = int(release_id_raw)
+                        self.logger.debug(
+                            f"Found release ID {release_id} for series {series_id}."
+                        )
+                        return release_id
+                    except (ValueError, TypeError):
                         self.logger.warning(
-                            f"First release entry for series {series_id} lacks 'id' key."
+                            f"Release ID for series {series_id} is not a valid integer: {release_id_raw}"
                         )
                 else:
-                    self.logger.warning(f"No releases found for series {series_id}.")
+                    self.logger.warning(
+                        f"First release entry for series {series_id} lacks 'id' key."
+                    )
+            else:
+                self.logger.warning(f"No releases found for series {series_id}.")
 
-            except requests.HTTPError as e:
-                self.logger.error(
-                    f"HTTP error fetching release ID from API for series {series_id}: {e}"
-                )
-            except Exception as e:
-                self.logger.error(
-                    f"Unexpected error fetching release ID for series {series_id}: {e}"
-                )
+        except requests.HTTPError as e:
+            self.logger.error(
+                f"HTTP error fetching release ID from API for series {series_id}: {e}"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Unexpected error fetching release ID for series {series_id}: {e}"
+            )
 
-            return None
+        return None
