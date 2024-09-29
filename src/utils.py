@@ -33,7 +33,7 @@ Functions:
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, cast
 
 import yaml
 

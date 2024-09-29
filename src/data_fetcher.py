@@ -25,7 +25,6 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, TypeVar, cast
 
 import requests
-from dateutil.relativedelta import relativedelta
 
 from .config import INDICATORS, IndicatorConfig
 from .data_storage import FredDataStorage, StorageMixin
@@ -335,9 +334,7 @@ class DataFetcher(StorageMixin):
         fixed_start_date = datetime.strptime(self.FIXED_START_DATE, "%Y-%m-%d")
 
         if earliest_cached_date > fixed_start_date or latest_cached_date < end_date:
-            self.logger.info(
-                "Cached data does not fully cover the fixed date range."
-            )
+            self.logger.info("Cached data does not fully cover the fixed date range.")
             return True
 
         # For simplicity, assume data is up-to-date if cache covers the range
@@ -406,7 +403,8 @@ class DataFetcher(StorageMixin):
             # Check if cached data covers the fixed date range
             try:
                 dates_in_cache = [
-                    datetime.strptime(entry["date"], "%Y-%m-%d") for entry in cached_data
+                    datetime.strptime(entry["date"], "%Y-%m-%d")
+                    for entry in cached_data
                 ]
                 earliest_cached_date = min(dates_in_cache)
                 latest_cached_date = max(dates_in_cache)
