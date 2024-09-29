@@ -64,7 +64,7 @@ def initialize_logger(logger_name: str = "Bondit") -> logging.Logger:
     if not logger.handlers:
         # Console handler for real-time output
         ch = logging.StreamHandler(sys.stdout)
-        ch.setLevel(logging.INFO)  # Handler captures all levels
+        ch.setLevel(logging.INFO)  # Handler captures INFO and higher levels
 
         formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -190,14 +190,12 @@ def collect_economic_indicators(
     fetcher: DataFetcher,
     indicators_config: List[IndicatorConfig],
     logger: logging.Logger,
-    start_year: Optional[int] = None,
-    end_year: Optional[int] = None,
 ) -> Dict[str, EconomicIndicator]:
     """
     Collect economic data and create EconomicIndicator instances.
 
     This function iterates through the list of economic indicators defined in the configuration,
-    fetches their data within the specified date range, validates the fetched data,
+    fetches their data within the fixed date range, validates the fetched data,
     and creates corresponding EconomicIndicator instances. It logs successes and
     handles any data validation issues gracefully.
 
@@ -205,10 +203,6 @@ def collect_economic_indicators(
         fetcher (DataFetcher): Initialized DataFetcher instance.
         indicators_config (List[IndicatorConfig]): List of indicator configurations.
         logger (logging.Logger): Logger instance for logging.
-        start_year (Optional[int], optional): The start year for data fetching.
-            Defaults to None.
-        end_year (Optional[int], optional): The end year for data fetching.
-            Defaults to None.
 
     Returns:
         Dict[str, EconomicIndicator]: Dictionary of successfully created EconomicIndicator instances.
@@ -225,9 +219,8 @@ def collect_economic_indicators(
         internal_key = indicator_config.internal_key
         try:
             logger.debug(f"Fetching data for {name} (Series ID: {series_id})")
-            data = fetcher.fetch_data(
-                series_id, start_year=start_year, end_year=end_year
-            )
+            # fetch_data no longer accepts start_year and end_year
+            data = fetcher.fetch_data(series_id)
             if not isinstance(data, list) or not data:
                 raise ValueError(
                     f"Economic data for {series_id} ({name}) is invalid or empty."
