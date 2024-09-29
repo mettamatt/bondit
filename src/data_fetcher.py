@@ -4,16 +4,16 @@
 data_fetcher.py
 
 This module defines the `DataFetcher` class, responsible for retrieving and managing economic 
-data from the Federal Reserve Economic Data (FRED) API. It allows optional specification of 
-start and end years to retrieve data within a specific date range. The class ensures data 
-is up-to-date by checking release schedules and retrieving new data as necessary, while 
-also caching data locally to optimize performance.
+data from the Federal Reserve Economic Data (FRED) API. It retrieves data within a fixed date range 
+from 2006-01-01 to the current date to align with the "5-Year Breakeven Inflation Rate" indicator's 
+data availability. The class ensures data is up-to-date by checking release schedules and retrieving 
+new data as necessary, while also caching data locally to optimize performance.
 
 Main Functionalities:
 - Making API requests to the FRED service.
 - Retrieving release IDs and release dates for specific economic data series.
 - Checking if cached data is outdated or missing, based on the series' frequency (daily, monthly, quarterly).
-- Fetching data from the API for specified or default date ranges.
+- Fetching data from the API for the fixed date range.
 - Storing and managing the retrieved data.
 
 Note:
@@ -44,9 +44,9 @@ class DataFetcher(StorageMixin):
     storage for release dates.
 
     Enhanced Features:
-    - Optionally specify a start and end year when fetching data.
-    - Check if the requested date range is available in the cache.
-    - Fetch missing data from the FRED API if the cache doesn't cover the requested range.
+    - Fixed date range from 2006-01-01 to the current date to align with the "5-Year Breakeven Inflation Rate" indicator's data availability.
+    - Check if the cached data is available and up-to-date.
+    - Fetch missing data from the FRED API if the cache doesn't cover the fixed date range.
     - Update the cache with new data to include the newly fetched date range.
     """
 
@@ -66,6 +66,9 @@ class DataFetcher(StorageMixin):
         "MONTHLY": MONTHLY_DELAY,
         "QUARTERLY": QUARTERLY_DELAY,
     }
+
+    # Fixed start date aligned with the "5-Year Breakeven Inflation Rate" indicator's data availability
+    FIXED_START_DATE: str = "2006-01-01"
 
     def __init__(
         self,
@@ -263,7 +266,7 @@ class DataFetcher(StorageMixin):
             "series_id": series_id,
             "observation_start": start_date,
             "observation_end": end_date,
-            "sort_order": "asc",
+            "sort_order": "desc",
         }
         self.logger.debug(
             f"Fetching data from API for series {series_id} with params {params}."
@@ -329,14 +332,16 @@ class DataFetcher(StorageMixin):
             self.logger.error(f"Invalid data format in cache. Error: {e}")
             return True
 
-        if earliest_cached_date > start_date or latest_cached_date < end_date:
+        fixed_start_date = datetime.strptime(self.FIXED_START_DATE, "%Y-%m-%d")
+
+        if earliest_cached_date > fixed_start_date or latest_cached_date < end_date:
             self.logger.info(
-                "Cached data does not fully cover the requested date range."
+                "Cached data does not fully cover the fixed date range."
             )
             return True
 
         # For simplicity, assume data is up-to-date if cache covers the range
-        self.logger.debug("Cached data covers the requested date range.")
+        self.logger.debug("Cached data covers the fixed date range.")
         return False
 
     def _adjust_release_date(self, series_id: str, fallback_date: datetime) -> None:
@@ -356,24 +361,18 @@ class DataFetcher(StorageMixin):
     def fetch_data(
         self,
         series_id: str,
-        start_year: Optional[int] = None,
-        end_year: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Fetch economic data for a specified series ID within an optional date range.
+        Fetch economic data for a specified series ID within the fixed date range.
 
-        Uses cached data if up-to-date and covers the requested date range; otherwise, retrieves
+        Uses cached data if up-to-date and covers the fixed date range; otherwise, retrieves
         new data from the FRED API.
 
-        This method ensures that new data is retrieved when the requested date range isn't fully
-        covered by the cached data. If new data is fetched, the cache is updated accordingly.
+        This method ensures that new data is retrieved when the cached data isn't fully
+        covering the fixed date range. If new data is fetched, the cache is updated accordingly.
 
         Args:
             series_id (str): The ID of the economic data series to fetch.
-            start_year (Optional[int], optional): The start year for the data retrieval.
-                Defaults to 6 years before the current year if not provided, but not earlier than 2006.
-            end_year (Optional[int], optional): The end year for the data retrieval.
-                Defaults to the current year if not provided.
 
         Returns:
             List[Dict[str, Any]]: A list of data points for the specified series.
@@ -385,32 +384,11 @@ class DataFetcher(StorageMixin):
         try:
             self.logger.info(f"Initiating data fetch for series: {series_id}")
 
-            # Determine start_date and end_date with the earliest limit set to 2006-01-01
-            # Hardcoded earliest date to align with the "5-Year Breakeven Inflation Rate" indicator's data availability
-            earliest_possible_start_date = "2006-01-01"
+            # Fixed date range from 2006-01-01 to today to align with the "5-Year Breakeven Inflation Rate" indicator's data availability
+            start_date = self.FIXED_START_DATE
+            end_date = datetime.now().strftime("%Y-%m-%d")
 
-            if start_year:
-                start_date = f"{start_year}-01-01"
-                # Enforce global start date limit
-                if datetime.strptime(start_date, "%Y-%m-%d") < datetime.strptime(
-                    earliest_possible_start_date, "%Y-%m-%d"
-                ):
-                    start_date = earliest_possible_start_date
-            else:
-                start_date = (datetime.now() - relativedelta(years=6)).strftime(
-                    "%Y-%m-%d"
-                )
-                if datetime.strptime(start_date, "%Y-%m-%d") < datetime.strptime(
-                    earliest_possible_start_date, "%Y-%m-%d"
-                ):
-                    start_date = earliest_possible_start_date
-
-            if end_year:
-                end_date = f"{end_year}-12-31"
-            else:
-                end_date = datetime.now().strftime("%Y-%m-%d")
-
-            self.logger.debug(f"Requested date range: {start_date} to {end_date}")
+            self.logger.debug(f"Fixed date range: {start_date} to {end_date}")
 
             start_date_dt = datetime.strptime(start_date, "%Y-%m-%d")
             end_date_dt = datetime.strptime(end_date, "%Y-%m-%d")
@@ -425,24 +403,29 @@ class DataFetcher(StorageMixin):
                 self.storage.replace_data(series_id, series_data)
                 return series_data
 
-            # Check if cached data covers the requested date range
-            dates_in_cache = [
-                datetime.strptime(entry["date"], "%Y-%m-%d") for entry in cached_data
-            ]
-            earliest_cached_date = min(dates_in_cache)
-            latest_cached_date = max(dates_in_cache)
-
-            self.logger.debug(
-                f"Cached data covers from {earliest_cached_date.strftime('%Y-%m-%d')} "
-                f"to {latest_cached_date.strftime('%Y-%m-%d')}"
-            )
+            # Check if cached data covers the fixed date range
+            try:
+                dates_in_cache = [
+                    datetime.strptime(entry["date"], "%Y-%m-%d") for entry in cached_data
+                ]
+                earliest_cached_date = min(dates_in_cache)
+                latest_cached_date = max(dates_in_cache)
+                self.logger.debug(
+                    f"Cached data range: {earliest_cached_date.strftime('%Y-%m-%d')} to {latest_cached_date.strftime('%Y-%m-%d')}"
+                )
+            except (KeyError, ValueError) as e:
+                self.logger.error(f"Invalid data format in cache. Error: {e}")
+                self.logger.info("Fetching data due to invalid cache format.")
+                series_data = self._fetch_from_api(series_id, start_date, end_date)
+                self.storage.replace_data(series_id, series_data)
+                return series_data
 
             if (
                 earliest_cached_date <= start_date_dt
                 and latest_cached_date >= end_date_dt
             ):
                 self.logger.info(f"Using cached data for series: {series_id}")
-                # Filter cached_data to the requested date range
+                # Filter cached_data to the fixed date range
                 series_data = [
                     entry
                     for entry in cached_data
@@ -453,9 +436,9 @@ class DataFetcher(StorageMixin):
                 return series_data
             else:
                 self.logger.info(
-                    f"Cached data does not fully cover the requested date range for series: {series_id}. Fetching missing data."
+                    f"Cached data does not fully cover the fixed date range for series: {series_id}. Fetching missing data."
                 )
-                # Fetch the entire requested range
+                # Fetch the entire fixed date range
                 series_data = self._fetch_from_api(series_id, start_date, end_date)
 
                 if series_data:
@@ -478,7 +461,7 @@ class DataFetcher(StorageMixin):
                         f"Cache updated with new data for series: {series_id}"
                     )
 
-                    # Filter combined data to the requested date range
+                    # Filter combined data to the fixed date range
                     filtered_data = [
                         entry
                         for entry in combined_data
@@ -491,7 +474,7 @@ class DataFetcher(StorageMixin):
                     self.logger.warning(
                         f"No new data fetched for series {series_id}. Returning cached data if available."
                     )
-                    # Return available cached data within the requested range
+                    # Return available cached data within the fixed date range
                     series_data = [
                         entry
                         for entry in cached_data
