@@ -1,9 +1,9 @@
 # src/config.py
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 
 class IndicatorType(Enum):
@@ -50,7 +50,7 @@ class IndicatorConfig:
             A weight assigned to the rule associated with this indicator.
             Determines the significance of this rule in portfolio adjustments.
             Higher weights imply greater impact.
-        earliest_date (Optional[str]):
+        earliest_date (str):
             The earliest available date for the indicator data in "YYYY-MM-DD" format.
     """
 
@@ -63,7 +63,7 @@ class IndicatorConfig:
     calculation_method: CalculationMethod
     thresholds: Tuple[float, float]
     rule_weight: float
-    earliest_date: Optional[str] = field(default=None)
+    earliest_date: str
 
 
 # Centralized list of all economic indicators with their configurations
@@ -223,7 +223,6 @@ def compute_fixed_start_date(indicators: List[IndicatorConfig]) -> str:
     earliest_dates = [
         datetime.strptime(indicator.earliest_date, "%Y-%m-%d")
         for indicator in indicators
-        if indicator.earliest_date is not None
     ]
     if not earliest_dates:
         raise ValueError(

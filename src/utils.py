@@ -22,7 +22,7 @@ Functions:
         Initializes data storage and fetcher components.
 
     collect_economic_indicators(fetcher: DataFetcher,
-                                indicators_config: List[Any],
+                                indicators_config: List[IndicatorConfig],
                                 logger: logging.Logger,
                                 rebalancing_date: Optional[str] = None) -> Dict[str, EconomicIndicator]:
         Collects economic data and creates EconomicIndicator instances.
@@ -174,16 +174,24 @@ def initialize_data_storage_and_fetcher(
         SystemExit: If initialization of data storage or fetcher fails.
     """
     try:
-        storage = FredDataStorage(config["storage"]["fred_file_path"])
-        fetcher = DataFetcher(storage, config["api"]["fred_api_key"])
+        fred_file_path = config["storage"]["fred_file_path"]
+        fred_api_key = config["api"]["fred_api_key"]
+
+        if not fred_api_key:
+            logger.critical("FRED API key is missing in the configuration.")
+            sys.exit(1)
+
+        storage = FredDataStorage(fred_file_path, logger=logger)
+        fetcher = DataFetcher(storage, fred_api_key, logger_instance=logger)
         logger.info("Initialized Data Storage and Data Fetcher.")
-        logger.debug(f"Storage path: {config['storage']['fred_file_path']}")
-        logger.debug(
-            f"FRED API Key: {'***' if config['api']['fred_api_key'] else 'None'}"
-        )
+        logger.debug(f"Storage path: {fred_file_path}")
+        logger.debug(f"FRED API Key: {'***' if fred_api_key else 'None'}")
         return fetcher
+    except KeyError as e:
+        logger.critical(f"Missing configuration key during initialization: {e}")
+        sys.exit(1)
     except Exception as e:
-        logger.critical(f"Initialization error: {e}")
+        logger.critical(f"Initialization error: {e}", exc_info=True)
         sys.exit(1)
 
 
@@ -245,7 +253,9 @@ def collect_economic_indicators(
             logger.warning(f"Data validation issue for {series_id} ('{name}'): {ve}")
             continue  # Continue processing other indicators
         except Exception as e:
-            logger.error(f"Error processing data for {series_id} ('{name}'): {e}")
+            logger.error(
+                f"Error processing data for {series_id} ('{name}'): {e}", exc_info=True
+            )
             continue  # Continue processing other indicators
 
     if not indicators:
@@ -277,5 +287,5 @@ def initialize_portfolio(logger: logging.Logger) -> Portfolio:
         logger.info("Portfolio initialized with initial allocations.")
         return portfolio
     except Exception as e:
-        logger.critical(f"Error initializing Portfolio: {e}")
+        logger.critical(f"Error initializing Portfolio: {e}", exc_info=True)
         sys.exit(1)

@@ -103,6 +103,8 @@ class StorageMixin:
             raise ValueError("Storage file path is not set.")
 
         try:
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(self.storage_file), exist_ok=True)
             with open(self.storage_file, "w") as file:
                 json.dump(data, file, indent=4)
                 self.logger.debug(f"Data successfully saved to {self.storage_file}.")
@@ -207,9 +209,10 @@ class FredDataStorage(StorageMixin):
                 )
                 return False
             # Validate value type
-            if not isinstance(entry["value"], (str, float, int)):
+            value = entry["value"]
+            if not isinstance(value, (float, int)) and value is not None:
                 self.logger.error(
-                    f"Invalid type for value: {entry['value']} (expected str, float, or int)."
+                    f"Invalid type for value: {value} (expected float, int, or None)."
                 )
                 return False
         self.logger.debug("New data passed validation checks.")

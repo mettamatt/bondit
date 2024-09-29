@@ -120,7 +120,7 @@ class DataFetcher(StorageMixin):
         max_years = 0
         for indicator in self.series_config_map.values():
             if indicator.time_frame_weights:
-                # Corrected: Extract 'years' from each TimeFrameWeight instance
+                # Extract 'years' from each TimeFrameWeight instance
                 indicator_max_year = max(
                     weight.years for weight in indicator.time_frame_weights
                 )
@@ -185,18 +185,14 @@ class DataFetcher(StorageMixin):
             raise
 
         indicator_config = self.series_config_map.get(series_id)
-        if indicator_config:
-            frequency_delay = self._get_frequency_delay(indicator_config.indicator_type)
-        else:
-            self.logger.warning(
-                f"No configuration found for series {series_id}. Using default delay."
-            )
-            frequency_delay = self.MONTHLY_DELAY
+        frequency_delay = (
+            self._get_frequency_delay(indicator_config.indicator_type)
+            if indicator_config
+            else self.MONTHLY_DELAY
+        )
 
         current_stored_date_str = self.release_dates.get(series_id)
         today = datetime.now()
-
-        adjusted_date: datetime
 
         if current_stored_date_str:
             try:
@@ -266,8 +262,21 @@ class DataFetcher(StorageMixin):
             response.raise_for_status()
             self.logger.debug(f"API request successful for endpoint {endpoint}.")
             return cast(Dict[str, Any], response.json())
+        except requests.HTTPError as e:
+            self.logger.error(f"HTTP error during API request: {e}", exc_info=True)
+            raise
+        except requests.ConnectionError as e:
+            self.logger.error(
+                f"Connection error during API request: {e}", exc_info=True
+            )
+            raise
+        except requests.Timeout as e:
+            self.logger.error(f"Timeout error during API request: {e}", exc_info=True)
+            raise
         except requests.RequestException as e:
-            self.logger.error(f"API request failed for endpoint {endpoint}: {e}")
+            self.logger.error(
+                f"Request exception during API request: {e}", exc_info=True
+            )
             raise
 
     def _fetch_from_api(
@@ -288,14 +297,14 @@ class DataFetcher(StorageMixin):
             "series_id": series_id,
             "observation_start": start_date,
             "observation_end": end_date,
-            "sort_order": "desc",
+            "sort_order": "asc",  # Use ascending for easier processing
         }
         self.logger.debug(
             f"Fetching data from API for series {series_id} with params {params}."
         )
         try:
             response = self._make_api_request("series/observations", params)
-        except Exception as e:
+        except requests.RequestException as e:
             self.logger.error(f"API request failed for series {series_id}: {e}")
             raise
 
@@ -310,6 +319,17 @@ class DataFetcher(StorageMixin):
         valid_observations: List[Dict[str, Any]] = []
         for obs in observations:
             if isinstance(obs, dict) and "date" in obs and "value" in obs:
+                value = obs["value"]
+                if value in ("NaN", "."):
+                    obs["value"] = None
+                else:
+                    try:
+                        obs["value"] = float(value)
+                    except ValueError:
+                        self.logger.warning(
+                            f"Invalid value format for series {series_id}: {value}. Setting to None."
+                        )
+                        obs["value"] = None
                 valid_observations.append(obs)
             else:
                 self.logger.warning(
@@ -412,7 +432,7 @@ class DataFetcher(StorageMixin):
 
             # Ensure adjusted start date is not before the indicator's earliest_date
             indicator_config = self.series_config_map.get(series_id)
-            if indicator_config and indicator_config.earliest_date:
+            if indicator_config:
                 indicator_earliest_date_dt = datetime.strptime(
                     indicator_config.earliest_date, "%Y-%m-%d"
                 )
@@ -421,10 +441,6 @@ class DataFetcher(StorageMixin):
                 )
                 self.logger.debug(
                     f"Earliest available date for series {series_id}: {indicator_config.earliest_date}"
-                )
-            else:
-                self.logger.warning(
-                    f"No earliest_date found for series {series_id}. Using adjusted start date."
                 )
 
             adjusted_start_date = adjusted_start_date_dt.strftime("%Y-%m-%d")
@@ -537,12 +553,14 @@ class DataFetcher(StorageMixin):
 
         except requests.HTTPError as e:
             self.logger.error(
-                f"HTTP error during data fetch for series {series_id}: {e}"
+                f"HTTP error during data fetch for series {series_id}: {e}",
+                exc_info=True,
             )
             raise
         except Exception as e:
             self.logger.error(
-                f"Unexpected error during data fetch for series {series_id}: {e}"
+                f"Unexpected error during data fetch for series {series_id}: {e}",
+                exc_info=True,
             )
             raise
 
@@ -587,11 +605,13 @@ class DataFetcher(StorageMixin):
 
         except requests.HTTPError as e:
             self.logger.error(
-                f"HTTP error fetching release ID from API for series {series_id}: {e}"
+                f"HTTP error fetching release ID from API for series {series_id}: {e}",
+                exc_info=True,
             )
         except Exception as e:
             self.logger.error(
-                f"Unexpected error fetching release ID for series {series_id}: {e}"
+                f"Unexpected error fetching release ID for series {series_id}: {e}",
+                exc_info=True,
             )
 
         return None
