@@ -86,6 +86,13 @@ class EconomicIndicator:
             if rebalancing_date
             else pd.Timestamp.today()
         )
+        
+        # Ensure that rebalancing_date is not before FIXED_START_DATE
+        FIXED_START_DATE_DT = pd.to_datetime(FIXED_START_DATE)
+        if self.rebalancing_date < FIXED_START_DATE_DT:
+            raise ValueError(
+                f"Rebalancing date {self.rebalancing_date.date()} is before FIXED_START_DATE {FIXED_START_DATE_DT.date()}."
+            )
 
         self.logger.debug(
             f"Initializing EconomicIndicator for '{self.name}' with rebalancing date {self.rebalancing_date.date()}."
@@ -161,7 +168,18 @@ class EconomicIndicator:
             return None
 
         end_date: pd.Timestamp = self.rebalancing_date
-        start_date: pd.Timestamp = end_date - pd.DateOffset(years=years)
+        
+        # Compute start_date, but ensure it's not before the earliest date of the data
+        earliest_data_date = self.data.index.min()
+        requested_start_date = end_date - pd.DateOffset(years=years)
+        start_date = max(requested_start_date, earliest_data_date)
+
+        if start_date > end_date:
+            self.logger.warning(
+                f"No data available between {start_date.date()} and {end_date.date()} for indicator '{self.name}'."
+            )
+            return None
+
         time_frame_data: pd.DataFrame = self.data[
             (self.data.index >= start_date) & (self.data.index <= end_date)
         ]
@@ -655,6 +673,13 @@ class EconomicIndicator:
             "weighted_change": weighted_change,
         }
         self.logger.debug(f"Weighted change for '{self.name}': {weighted_change}")
+
+        if total_weight == 0.0:
+            self.logger.warning(
+                f"No data available for any time frames for '{self.name}'."
+            )
+            results["overall_trend"] = "No Data"
+            return results
 
         # Determine overall trend based on majority of time frames
         rising_count = trend_directions.count(1)
