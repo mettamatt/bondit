@@ -29,18 +29,20 @@ class EconomicIndicator:
     Attributes:
         config (IndicatorConfig): Configuration details for the economic indicator.
         data (pd.DataFrame): Cleaned and processed data for analysis.
-        time_frame_weights (Dict[str, float]): Weights assigned to different time frames for weighted analysis.
+        time_frame_weights (Dict[int, float]): Weights assigned to different time frames for weighted analysis.
         indicator_type (str): Frequency type of the indicator (e.g., DAILY, MONTHLY, QUARTERLY).
         name (str): Name of the economic indicator.
         internal_key (str): Internal identifier for the indicator.
         description (str): Description of the economic indicator.
         logger (logging.Logger): Logger instance for logging activities and debugging.
+        rebalancing_date (pd.Timestamp): The date up to which data is analyzed.
     """
 
     def __init__(
         self,
         config: IndicatorConfig,
         data: List[Dict[str, Any]],
+        rebalancing_date: Optional[str] = None,
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """
@@ -50,8 +52,10 @@ class EconomicIndicator:
             config (IndicatorConfig): Configuration instance containing details like calculation method,
                                       thresholds, and time frame weights.
             data (List[Dict[str, Any]]): Raw data points for the indicator, typically fetched from an external source.
+            rebalancing_date (Optional[str], optional): The date up to which data should be analyzed in "YYYY-MM-DD" format.
+                                                      Defaults to today's date if not provided.
             logger (Optional[logging.Logger], optional): Logger instance for logging messages.
-                                                         If None, a default logger named "Bondit.EconomicIndicator" is used.
+                                                       If None, a default logger named "Bondit.EconomicIndicator" is used.
 
         Example:
             >>> config = IndicatorConfig(
@@ -67,7 +71,7 @@ class EconomicIndicator:
             ...     {"date": "2023-08-01", "value": 249.1},
             ...     # More data points...
             ... ]
-            >>> cpi_indicator = EconomicIndicator(config, data)
+            >>> cpi_indicator = EconomicIndicator(config, data, rebalancing_date="2023-09-01")
         """
         self.logger = logger or logging.getLogger("Bondit.EconomicIndicator")
         self.config = config
@@ -77,8 +81,15 @@ class EconomicIndicator:
         self.internal_key = config.internal_key
         self.description = config.description
         self.data: pd.DataFrame = pd.DataFrame()
+        self.rebalancing_date: pd.Timestamp = (
+            pd.to_datetime(rebalancing_date)
+            if rebalancing_date
+            else pd.Timestamp.today()
+        )
 
-        self.logger.debug(f"Initializing EconomicIndicator for '{self.name}'.")
+        self.logger.debug(
+            f"Initializing EconomicIndicator for '{self.name}' with rebalancing date {self.rebalancing_date.date()}."
+        )
         self.process_data(data)
 
     def process_data(self, data_points: List[Dict[str, Any]]) -> None:
@@ -86,7 +97,8 @@ class EconomicIndicator:
         Process raw data points into a cleaned DataFrame.
 
         Converts raw data into a Pandas DataFrame, ensuring proper date and value formatting.
-        This method also sorts the data in reverse chronological order to facilitate analysis.
+        This method also filters data up to the rebalancing date and sorts it in reverse chronological order
+        to facilitate analysis.
 
         Args:
             data_points (List[Dict[str, Any]]): Raw data points for the indicator.
@@ -109,27 +121,30 @@ class EconomicIndicator:
             )
             return
 
-        self.logger.debug(f"Processing data for '{self.name}'.")
+        self.logger.debug(
+            f"Processing data for '{self.name}' up to {self.rebalancing_date.date()}."
+        )
 
         # Convert 'date' to datetime and 'value' to numeric, coercing errors to NaN
         original_df["date"] = pd.to_datetime(original_df["date"], errors="coerce")
         original_df["value"] = pd.to_numeric(original_df["value"], errors="coerce")
 
-        # Set 'date' as the index and sort in reverse chronological order
+        # Filter data up to the rebalancing date
         cleaned_df = original_df.copy()
+        cleaned_df = cleaned_df[cleaned_df["date"] <= self.rebalancing_date]
         cleaned_df.set_index("date", inplace=True)
         cleaned_df.sort_index(ascending=False, inplace=True)
 
         self.data = cleaned_df
         self.logger.info(
-            f"Processed data for '{self.name}' with {len(cleaned_df)} records, including NaN values for alignment."
+            f"Processed data for '{self.name}' with {len(cleaned_df)} records up to {self.rebalancing_date.date()}, including NaN values for alignment."
         )
 
     def extract_time_frame_data(self, years: int) -> Optional[pd.DataFrame]:
         """
         Extract data for a specific time frame.
 
-        Filters the data to include only records within the specified number of years from the latest date.
+        Filters the data to include only records within the specified number of years from the rebalancing date.
 
         Args:
             years (int): Number of years for the time frame.
@@ -145,7 +160,7 @@ class EconomicIndicator:
             self.logger.warning(f"No data available for indicator '{self.name}'.")
             return None
 
-        end_date: pd.Timestamp = self.data.index.max()
+        end_date: pd.Timestamp = self.rebalancing_date
         start_date: pd.Timestamp = end_date - pd.DateOffset(years=years)
         time_frame_data: pd.DataFrame = self.data[
             (self.data.index >= start_date) & (self.data.index <= end_date)
@@ -153,12 +168,12 @@ class EconomicIndicator:
 
         if time_frame_data.empty:
             self.logger.warning(
-                f"No data available for {years}-year period for indicator '{self.name}'."
+                f"No data available for {years}-year period up to {end_date.date()} for indicator '{self.name}'."
             )
             return None
 
         self.logger.debug(
-            f"Extracted {len(time_frame_data)} records for {years}-year period for '{self.name}'."
+            f"Extracted {len(time_frame_data)} records for {years}-year period up to {end_date.date()} for '{self.name}'."
         )
         return time_frame_data
 
@@ -520,7 +535,7 @@ class EconomicIndicator:
 
         Returns:
             Dict[str, Any]: Dictionary containing analysis results, including trend signals,
-                            weighted changes, and statistics.
+                            weighted changes, statistics, and the rebalancing date.
 
         Example:
             >>> analysis_results = cpi_indicator.analyze_indicator()
@@ -549,12 +564,12 @@ class EconomicIndicator:
             f"Analyzing '{self.name}' with frequency '{frequency}' and periods_per_year={periods_per_year}."
         )
 
-        for period, weight in self.time_frame_weights.items():
+        for period_years, weight in self.time_frame_weights.items():
             self.logger.debug(
-                f"Analyzing '{self.name}' for {period}-year period with weight {weight}."
+                f"Analyzing '{self.name}' for {period_years}-year period with weight {weight}."
             )
             time_frame_data: Optional[pd.DataFrame] = self.extract_time_frame_data(
-                period
+                period_years
             )
             if time_frame_data is None or time_frame_data.empty:
                 continue
@@ -562,7 +577,7 @@ class EconomicIndicator:
             values: pd.Series = time_frame_data["value"].dropna()
             if values.empty:
                 self.logger.warning(
-                    f"No valid data points for {period}-year period for '{self.name}'."
+                    f"No valid data points for {period_years}-year period for '{self.name}'."
                 )
                 continue
 
@@ -579,7 +594,7 @@ class EconomicIndicator:
             else:
                 change = None
                 self.logger.warning(
-                    f"Current value is None for '{self.name}' in {period}-year period."
+                    f"Current value is None for '{self.name}' in {period_years}-year period."
                 )
 
             # Generate trend signal using thresholds
@@ -605,7 +620,7 @@ class EconomicIndicator:
             )
 
             # Store analysis results for the current time frame
-            results[f"{period}y"] = {
+            results[f"{period_years}y"] = {
                 "current_value": current_value,
                 "change": change,
                 "cagr": cagr,
@@ -615,7 +630,7 @@ class EconomicIndicator:
             }
 
             self.logger.debug(
-                f"Analysis for {period}y period of '{self.name}': {results[f'{period}y']}"
+                f"Analysis for {period_years}y period of '{self.name}': {results[f'{period_years}y']}"
             )
 
             # Accumulate weighted changes for overall analysis
@@ -661,6 +676,12 @@ class EconomicIndicator:
         results["statistics"] = stats
         self.logger.debug(f"Statistics for '{self.name}': {stats}")
 
+        # **Include Rebalancing Date in Results**
+        results["rebalancing_date"] = self.rebalancing_date.strftime("%Y-%m-%d")
+        self.logger.debug(
+            f"Rebalancing date for '{self.name}': {results['rebalancing_date']}"
+        )
+
         self.logger.info(f"Completed analysis for '{self.name}'.")
         return results
 
@@ -672,7 +693,7 @@ class EconomicIndicator:
         data processing, statistical calculations, and trend signal generation.
 
         Returns:
-            Dict[str, Any]: Comprehensive analysis results for the indicator.
+            Dict[str, Any]: Comprehensive analysis results for the indicator, including the rebalancing date.
 
         Example:
             >>> analysis_results = cpi_indicator.analyze_all_indicators()

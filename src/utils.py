@@ -23,7 +23,8 @@ Functions:
 
     collect_economic_indicators(fetcher: DataFetcher,
                                 indicators_config: List[Any],
-                                logger: logging.Logger) -> Dict[str, EconomicIndicator]:
+                                logger: logging.Logger,
+                                rebalancing_date: Optional[str] = None) -> Dict[str, EconomicIndicator]:
         Collects economic data and creates EconomicIndicator instances.
 
     initialize_portfolio(logger: logging.Logger) -> Portfolio:
@@ -33,7 +34,7 @@ Functions:
 import logging
 import os
 import sys
-from typing import Any, Dict, List, cast
+from typing import Any, Dict, List, Optional, cast
 
 import yaml
 
@@ -190,12 +191,13 @@ def collect_economic_indicators(
     fetcher: DataFetcher,
     indicators_config: List[IndicatorConfig],
     logger: logging.Logger,
+    rebalancing_date: Optional[str] = None,
 ) -> Dict[str, EconomicIndicator]:
     """
     Collect economic data and create EconomicIndicator instances.
 
     This function iterates through the list of economic indicators defined in the configuration,
-    fetches their data within the fixed date range, validates the fetched data,
+    fetches their data up to the specified rebalancing date, validates the fetched data,
     and creates corresponding EconomicIndicator instances. It logs successes and
     handles any data validation issues gracefully.
 
@@ -203,6 +205,8 @@ def collect_economic_indicators(
         fetcher (DataFetcher): Initialized DataFetcher instance.
         indicators_config (List[IndicatorConfig]): List of indicator configurations.
         logger (logging.Logger): Logger instance for logging.
+        rebalancing_date (Optional[str], optional): The date up to which data should be analyzed in "YYYY-MM-DD" format.
+                                                  Defaults to today's date if not provided.
 
     Returns:
         Dict[str, EconomicIndicator]: Dictionary of successfully created EconomicIndicator instances.
@@ -219,7 +223,7 @@ def collect_economic_indicators(
         internal_key = indicator_config.internal_key
         try:
             logger.debug(f"Fetching data for {name} (Series ID: {series_id})")
-            # fetch_data no longer accepts start_year and end_year
+            # Fetch data up to the rebalancing date
             data = fetcher.fetch_data(series_id)
             if not isinstance(data, list) or not data:
                 raise ValueError(
@@ -227,16 +231,21 @@ def collect_economic_indicators(
                 )
             economic_data[internal_key] = data
 
-            # Create EconomicIndicator instance with the fetched data
-            economic_indicator = EconomicIndicator(config=indicator_config, data=data)
+            # Create EconomicIndicator instance with the fetched data and rebalancing date
+            economic_indicator = EconomicIndicator(
+                config=indicator_config,
+                data=data,
+                rebalancing_date=rebalancing_date,
+                logger=logger.getChild("EconomicIndicator"),
+            )
             indicators[internal_key] = economic_indicator
-            logger.info(f"EconomicIndicator for {name} created successfully.")
+            logger.info(f"EconomicIndicator for '{name}' created successfully.")
             logger.debug(f"EconomicIndicator: {economic_indicator}")
         except ValueError as ve:
-            logger.warning(f"Data validation issue for {series_id} ({name}): {ve}")
+            logger.warning(f"Data validation issue for {series_id} ('{name}'): {ve}")
             continue  # Continue processing other indicators
         except Exception as e:
-            logger.error(f"Error processing data for {series_id} ({name}): {e}")
+            logger.error(f"Error processing data for {series_id} ('{name}'): {e}")
             continue  # Continue processing other indicators
 
     if not indicators:

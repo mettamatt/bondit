@@ -10,6 +10,8 @@ Functions:
 """
 
 import sys
+from datetime import datetime
+from typing import Optional
 
 from .config import INDICATORS
 from .decision_engine import DecisionEngine
@@ -22,18 +24,22 @@ from .utils import (
 )
 
 
-def main() -> None:
+def main(rebalancing_date: Optional[str] = None) -> None:
     """
     Execute the main workflow of the Bondit portfolio management application.
 
     The workflow includes:
-        1. Initializing the main and report loggers.
+        1. Initializing the main logger.
         2. Loading and validating configuration settings.
         3. Initializing data storage and fetcher components.
         4. Collecting economic data and creating EconomicIndicator instances.
         5. Initializing the investment portfolio.
         6. Applying decision rules to adjust the portfolio.
         7. Generating and logging the rebalancing report.
+
+    Args:
+        rebalancing_date (Optional[str], optional): The date up to which data should be analyzed in "YYYY-MM-DD" format.
+                                                    Defaults to today's date if not provided.
 
     Raises:
         SystemExit: Exits the application if critical errors occur during initialization
@@ -57,12 +63,33 @@ def main() -> None:
     # Load and validate the configuration settings
     config = load_configuration(config_path, logger, required_config_fields)
 
+    # **Specify Rebalancing Date in main.py**
+    if rebalancing_date:
+        try:
+            # Validate the format of the rebalancing date
+            datetime.strptime(rebalancing_date, "%Y-%m-%d")
+            logger.info(f"Using specified rebalancing date: {rebalancing_date}.")
+        except ValueError:
+            logger.error(
+                f"Invalid rebalancing date format: {rebalancing_date}. Expected 'YYYY-MM-DD'."
+            )
+            sys.exit(1)
+    else:
+        # Default to today's date if not specified
+        rebalancing_date = datetime.now().strftime("%Y-%m-%d")
+        logger.info(
+            f"No rebalancing date specified. Defaulting to today: {rebalancing_date}."
+        )
+
     # Initialize data storage and fetcher components
     fetcher = initialize_data_storage_and_fetcher(config, logger)
 
     # Step 1: Collect economic data and create EconomicIndicator instances
     indicators = collect_economic_indicators(
-        fetcher, config.get("indicators", INDICATORS), logger
+        fetcher,
+        config.get("indicators", INDICATORS),
+        logger,
+        rebalancing_date=rebalancing_date,  # Pass the rebalancing date
     )
 
     # Step 2: Initialize the investment portfolio
@@ -95,4 +122,18 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    # **Optional: Accept Rebalancing Date as a Command-Line Argument**
+    # This allows for easier backtesting by passing different dates when running the script.
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Bondit Portfolio Management Application"
+    )
+    parser.add_argument(
+        "--rebalancing_date",
+        type=str,
+        help="Rebalancing date in 'YYYY-MM-DD' format. Defaults to today if not provided.",
+    )
+    args = parser.parse_args()
+
+    main(rebalancing_date=args.rebalancing_date)
