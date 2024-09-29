@@ -3,13 +3,38 @@
 """
 data_storage.py
 
-This module manages the storage and retrieval of economic data from the FRED API and investment recommendations.
-It includes classes for handling JSON data storage, ensuring that data is consistently saved, loaded, and updated.
+This module manages the storage and retrieval of economic data from the Federal Reserve Economic Data (FRED) API.
+It provides classes for handling JSON data storage, ensuring that data is consistently saved, loaded, and updated.
 The module is designed with simplicity and efficiency in mind, leveraging mixins for shared functionality.
 
 Classes:
-    StorageMixin: Provides shared methods for loading and saving JSON data with error handling.
-    FredDataStorage: Manages storage of economic data retrieved from the FRED API, replacing series data when updated.
+    StorageMixin: 
+        Provides shared methods for loading and saving JSON data with error handling.
+        It serves as a foundation for other storage-related classes to inherit common functionalities.
+
+    FredDataStorage: 
+        Manages storage of economic data retrieved from the FRED API.
+        It replaces the entire dataset for a specific series when new data is retrieved,
+        ensuring that the stored data remains current and accurate.
+
+Usage Example:
+    from src.data_storage import FredDataStorage
+
+    # Initialize the storage with a specified JSON file
+    storage = FredDataStorage(storage_file="./data/fred_data.json")
+
+    # Retrieve data for a specific series
+    series_id = "GDP"
+    gdp_data = storage.get_data(series_id)
+    print(gdp_data)
+
+    # Replace data for a specific series with new data
+    new_gdp_data = [
+        {"date": "2024-01-01", "value": 21000.5},
+        {"date": "2024-02-01", "value": 21100.7},
+        # ... additional data points ...
+    ]
+    storage.replace_data(series_id, new_gdp_data)
 """
 
 import json
@@ -103,8 +128,6 @@ class StorageMixin:
             raise ValueError("Storage file path is not set.")
 
         try:
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(self.storage_file), exist_ok=True)
             with open(self.storage_file, "w") as file:
                 json.dump(data, file, indent=4)
                 self.logger.debug(f"Data successfully saved to {self.storage_file}.")
@@ -209,10 +232,9 @@ class FredDataStorage(StorageMixin):
                 )
                 return False
             # Validate value type
-            value = entry["value"]
-            if not isinstance(value, (float, int)) and value is not None:
+            if not isinstance(entry["value"], (str, float, int)):
                 self.logger.error(
-                    f"Invalid type for value: {value} (expected float, int, or None)."
+                    f"Invalid type for value: {entry['value']} (expected str, float, or int)."
                 )
                 return False
         self.logger.debug("New data passed validation checks.")
