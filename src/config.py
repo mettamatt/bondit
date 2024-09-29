@@ -5,6 +5,8 @@ from datetime import datetime
 from enum import Enum
 from typing import List, Tuple
 
+from dateutil.relativedelta import relativedelta
+
 
 class IndicatorType(Enum):
     DAILY = "DAILY"
@@ -212,25 +214,22 @@ INDICATORS: List[IndicatorConfig] = [
 ]
 
 
-# Programmatically compute FIXED_START_DATE as the maximum of all earliest_date values
-def compute_fixed_start_date(indicators: List[IndicatorConfig]) -> str:
-    """
-    Compute the FIXED_START_DATE as the latest earliest_date among all indicators.
+# Compute ANALYSIS_START_DATE as the latest required_start_date across all indicators
+def compute_analysis_start_date(indicators: List[IndicatorConfig]) -> str:
+    analysis_start_dates = []
+    for indicator in indicators:
+        earliest = datetime.strptime(indicator.earliest_date, "%Y-%m-%d")
+        max_years = max(tfw.years for tfw in indicator.time_frame_weights)
+        required_start_date = earliest + relativedelta(years=max_years)
+        analysis_start_dates.append(required_start_date)
 
-    Returns:
-        str: The FIXED_START_DATE in "YYYY-MM-DD" format.
-    """
-    earliest_dates = [
-        datetime.strptime(indicator.earliest_date, "%Y-%m-%d")
-        for indicator in indicators
-    ]
-    if not earliest_dates:
+    if not analysis_start_dates:
         raise ValueError(
-            "No earliest_date found in indicators to compute FIXED_START_DATE."
+            "No earliest_date found in indicators to compute ANALYSIS_START_DATE."
         )
 
-    fixed_start_date = max(earliest_dates)
-    return fixed_start_date.strftime("%Y-%m-%d")
+    analysis_start_date = max(analysis_start_dates)
+    return analysis_start_date.strftime("%Y-%m-%d")
 
 
-FIXED_START_DATE: str = compute_fixed_start_date(INDICATORS)
+ANALYSIS_START_DATE: str = compute_analysis_start_date(INDICATORS)

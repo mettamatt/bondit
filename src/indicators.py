@@ -14,7 +14,12 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pandas as pd
 
-from .config import FIXED_START_DATE, CalculationMethod, IndicatorConfig, IndicatorType
+from .config import (
+    ANALYSIS_START_DATE,
+    CalculationMethod,
+    IndicatorConfig,
+    IndicatorType,
+)
 
 
 class EconomicIndicator:
@@ -93,11 +98,11 @@ class EconomicIndicator:
             else pd.Timestamp.today()
         )
 
-        # Ensure that rebalancing_date is not before FIXED_START_DATE
-        FIXED_START_DATE_DT = pd.to_datetime(FIXED_START_DATE)
-        if self.rebalancing_date < FIXED_START_DATE_DT:
+        # Ensure that rebalancing_date is not before ANALYSIS_START_DATE
+        ANALYSIS_START_DATE_DT = pd.to_datetime(ANALYSIS_START_DATE)
+        if self.rebalancing_date < ANALYSIS_START_DATE_DT:
             raise ValueError(
-                f"Rebalancing date {self.rebalancing_date.date()} is before FIXED_START_DATE {FIXED_START_DATE_DT.date()}."
+                f"Rebalancing date {self.rebalancing_date.date()} is before ANALYSIS_START_DATE {ANALYSIS_START_DATE_DT.date()}."
             )
 
         self.logger.debug(

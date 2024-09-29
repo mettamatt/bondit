@@ -5,7 +5,7 @@ data_fetcher.py
 
 This module defines the `DataFetcher` class, responsible for retrieving and managing economic 
 data from the Federal Reserve Economic Data (FRED) API. It retrieves data within an adjusted date range 
-considering the maximum time frames required by the economic indicators. The class ensures data is 
+considering each indicator's specific time frames required. The class ensures data is 
 up-to-date by checking release schedules and retrieving new data as necessary, while also caching 
 data locally to optimize performance.
 
@@ -34,8 +34,9 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, TypeVar, cast
 
 import requests
+from dateutil.relativedelta import relativedelta  # For accurate date arithmetic
 
-from .config import FIXED_START_DATE, INDICATORS, IndicatorConfig, IndicatorType
+from .config import ANALYSIS_START_DATE, INDICATORS, IndicatorConfig, IndicatorType
 from .data_storage import FredDataStorage, StorageMixin
 
 logger = logging.getLogger("Bondit.DataFetcher")
@@ -52,8 +53,7 @@ class DataFetcher(StorageMixin):
     storage for release dates.
 
     Enhanced Features:
-    - Adjusted date range from (FIXED_START_DATE - max_time_frame_years) to the current date to align with
-      the indicators' data availability requirements.
+    - Adjusted date range per indicator based on each indicator's earliest_date and time_frame_weights.
     - Check if the cached data is available and up-to-date.
     - Fetch missing data from the FRED API if the cache doesn't cover the adjusted date range.
     - Update the cache with new data to include the newly fetched date range.
@@ -116,30 +116,6 @@ class DataFetcher(StorageMixin):
             indicator.series_id: indicator for indicator in indicators or INDICATORS
         }
         self.logger.debug("Series configuration map initialized.")
-
-        # Compute the maximum time frame required by any indicator
-        self.max_time_frame_years: int = self._compute_max_time_frame_years()
-        self.logger.debug(
-            f"Maximum time frame across all indicators: {self.max_time_frame_years} years."
-        )
-
-    def _compute_max_time_frame_years(self) -> int:
-        """
-        Compute the maximum time frame (in years) required by all indicators.
-
-        Returns:
-            int: The maximum number of years required for the time frames.
-        """
-        max_years = 0
-        for indicator in self.series_config_map.values():
-            if indicator.time_frame_weights:
-                # Extract 'years' from each TimeFrameWeight instance
-                indicator_max_year = max(
-                    weight.years for weight in indicator.time_frame_weights
-                )
-                if indicator_max_year > max_years:
-                    max_years = indicator_max_year
-        return max_years
 
     def _get_release_date(self, series_id: str) -> Optional[str]:
         """
@@ -387,29 +363,15 @@ class DataFetcher(StorageMixin):
             self.logger.error(f"Invalid data format in cache. Error: {e}")
             return True
 
-        fixed_start_date = datetime.strptime(FIXED_START_DATE, "%Y-%m-%d")
-
-        if earliest_cached_date > fixed_start_date or latest_cached_date < end_date:
-            self.logger.info("Cached data does not fully cover the fixed date range.")
+        if earliest_cached_date > start_date or latest_cached_date < end_date:
+            self.logger.info(
+                "Cached data does not fully cover the required date range."
+            )
             return True
 
         # For simplicity, assume data is up-to-date if cache covers the range
-        self.logger.debug("Cached data covers the fixed date range.")
+        self.logger.debug("Cached data covers the required date range.")
         return False
-
-    def _adjust_release_date(self, series_id: str, fallback_date: datetime) -> None:
-        """
-        Adjust the release date for a given series.
-
-        Args:
-            series_id (str): The ID of the economic data series.
-            fallback_date (datetime): The new fallback date to set.
-        """
-        self.release_dates[series_id] = fallback_date.strftime("%Y-%m-%d")
-        self._save_data(self.release_dates)
-        self.logger.info(
-            f"Adjusted release date for series {series_id} to {fallback_date.strftime('%Y-%m-%d')}."
-        )
 
     def fetch_data(
         self,
@@ -437,101 +399,65 @@ class DataFetcher(StorageMixin):
         try:
             self.logger.info(f"Initiating data fetch for series: {series_id}")
 
-            # Compute the adjusted start date
-            fixed_start_date_dt = datetime.strptime(FIXED_START_DATE, "%Y-%m-%d")
-            adjusted_start_date_dt = fixed_start_date_dt - timedelta(
-                days=365 * self.max_time_frame_years
-            )
-
-            # Ensure adjusted start date is not before the indicator's earliest_date
+            # Retrieve the specific indicator configuration
             indicator_config = self.series_config_map.get(series_id)
-            if indicator_config:
-                indicator_earliest_date_dt = datetime.strptime(
-                    indicator_config.earliest_date, "%Y-%m-%d"
+            if not indicator_config:
+                self.logger.error(
+                    f"Indicator configuration not found for series {series_id}."
                 )
-                adjusted_start_date_dt = max(
-                    adjusted_start_date_dt, indicator_earliest_date_dt
-                )
-                self.logger.debug(
-                    f"Earliest available date for series {series_id}: {indicator_config.earliest_date}"
-                )
+                return []
 
-            adjusted_start_date = adjusted_start_date_dt.strftime("%Y-%m-%d")
+            # Compute the required data download start date for this indicator
+            earliest_date_dt = datetime.strptime(
+                indicator_config.earliest_date, "%Y-%m-%d"
+            )
+            max_time_frame_years = max(
+                tfw.years for tfw in indicator_config.time_frame_weights
+            )
+            analysis_start_date_dt = datetime.strptime(ANALYSIS_START_DATE, "%Y-%m-%d")
+            data_download_start_dt = analysis_start_date_dt - relativedelta(
+                years=max_time_frame_years
+            )
+            # Ensure data_download_start_dt is not earlier than indicator's earliest_date
+            data_download_start_dt = max(data_download_start_dt, earliest_date_dt)
+            data_download_start_date = data_download_start_dt.strftime("%Y-%m-%d")
             end_date = datetime.now().strftime("%Y-%m-%d")
 
             self.logger.debug(
-                f"Adjusted date range for series {series_id}: {adjusted_start_date} to {end_date}"
+                f"Adjusted date range for series {series_id}: {data_download_start_date} to {end_date}"
             )
 
-            start_date_dt = adjusted_start_date_dt
+            start_date_dt = data_download_start_dt
             end_date_dt = datetime.strptime(end_date, "%Y-%m-%d")
 
             cached_data = self.storage.get_data(series_id)
 
-            # Retrieve the last release date for the series
-            last_release_date_str = self._get_release_date(series_id)
-            if last_release_date_str:
-                last_release_date_dt = datetime.strptime(
-                    last_release_date_str, "%Y-%m-%d"
-                )
-                self.logger.debug(
-                    f"Last release date for series {series_id}: {last_release_date_str}"
-                )
-            else:
-                last_release_date_dt = None
-                self.logger.debug(f"No release date found for series {series_id}.")
-
-            # Determine if new data should be fetched based on release schedule
-            fetch_new_data = False
-            if last_release_date_dt:
-                indicator_type = (
-                    self.series_config_map[series_id].indicator_type
-                    if series_id in self.series_config_map
-                    else IndicatorType.MONTHLY  # Default frequency
-                )
-                frequency_delay = self._get_frequency_delay(indicator_type)
-                next_check_date_dt = last_release_date_dt + timedelta(
-                    days=frequency_delay
-                )
-                today_dt = datetime.now()
-                self.logger.debug(
-                    f"Next data check date for series {series_id}: {next_check_date_dt.strftime('%Y-%m-%d')}"
-                )
-
-                if today_dt >= next_check_date_dt:
-                    self.logger.info(
-                        f"New data is expected for series {series_id}. Preparing to fetch."
-                    )
-                    fetch_new_data = True
-                else:
-                    self.logger.info(
-                        f"No new data expected for series {series_id} as of today."
-                    )
-            else:
-                # If no release date is recorded, assume data might be missing or first fetch
+            # Determine if data is missing or outdated
+            if self._is_data_missing(cached_data, start_date_dt, end_date_dt):
                 self.logger.info(
-                    f"No recorded release date for series {series_id}. Assuming data might be missing."
+                    f"Data is missing or outdated for series {series_id}. Fetching from API."
                 )
-                fetch_new_data = True
-
-            if fetch_new_data:
                 if not cached_data:
                     self.logger.info(
-                        f"No cached data for series: {series_id}. Fetching data."
+                        f"No cached data for series: {series_id}. Fetching data from {data_download_start_date} to {end_date}."
                     )
                     series_data = self._fetch_from_api(
-                        series_id, adjusted_start_date, end_date
+                        series_id, data_download_start_date, end_date
                     )
                     self.storage.replace_data(series_id, series_data)
                 else:
                     # Determine the start date for fetching new data
                     latest_cached_date_str = max(
-                        entry["date"] for entry in cached_data if entry["date"]
+                        entry["date"] for entry in cached_data if entry.get("date")
                     )
                     latest_cached_date_dt = datetime.strptime(
                         latest_cached_date_str, "%Y-%m-%d"
                     )
-                    new_start_date_dt = latest_cached_date_dt + timedelta(days=1)
+                    # Ensure we don't set a start date before the required data download start date
+                    new_start_date_dt = max(
+                        latest_cached_date_dt + timedelta(days=1),
+                        data_download_start_dt,
+                    )
                     new_start_date = new_start_date_dt.strftime("%Y-%m-%d")
 
                     self.logger.info(
@@ -568,13 +494,10 @@ class DataFetcher(StorageMixin):
                 self._update_release_date(
                     series_id, new_release_date.strftime("%Y-%m-%d")
                 )
-
             else:
                 self.logger.info(
                     f"Using cached data for series: {series_id} without fetching new data."
                 )
-
-            # After handling release date logic, proceed to use cached data
 
             # Refresh cached_data in case it was updated
             cached_data = self.storage.get_data(series_id)
