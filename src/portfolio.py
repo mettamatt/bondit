@@ -258,43 +258,130 @@ class Portfolio:
 
     def rebalance(self) -> None:
         """
-        Rebalance the portfolio to ensure total allocations sum to 100%.
-
-        This method adjusts all asset allocations proportionally to correct any deviations
-        from the total allocation target of 100%. It ensures that the portfolio remains balanced
-        and that allocations adhere to strategic objectives.
-
-        Example:
-            >>> portfolio.rebalance()
-            Rebalances the portfolio allocations to sum to 100%.
+        Rebalance the portfolio to ensure total allocations sum to 100%,
+        redistributing excess or deficit among assets within their constraints.
         """
-        total = sum(self.allocations.values())
-        self.logger.debug(f"Total allocations before rebalancing: {total}%")
+        self.logger.debug("Starting rebalance process.")
 
-        # Use math.isclose to handle floating-point precision
-        if not math.isclose(total, 100.0, abs_tol=0.1) and total != 0.0:
-            factor = 100.0 / total
-            self.logger.debug(f"Rebalancing factor: {factor}")
+        # First, enforce min and max constraints on current allocations
+        for asset in self.allocations:
+            alloc = self.allocations[asset]
+            min_alloc = self.min_allocations.get(asset, 0.0)
+            max_alloc = self.max_allocations.get(asset, 100.0)
 
-            for asset_type in self.allocations:
-                old_alloc = self.allocations[asset_type]
-                new_alloc = old_alloc * factor
-                # Enforce max allocations after rebalancing
-                max_alloc = self.max_allocations.get(asset_type, 100.0)
-                new_alloc = min(new_alloc, max_alloc)
-                self.allocations[asset_type] = new_alloc
+            # Enforce constraints
+            if alloc < min_alloc:
                 self.logger.debug(
-                    f"Rebalanced '{asset_type}': {old_alloc}% -> {new_alloc:.2f}%"
+                    f"Adjusting '{asset}' up to its minimum allocation of {min_alloc}%."
+                )
+                self.allocations[asset] = min_alloc
+            elif alloc > max_alloc:
+                self.logger.debug(
+                    f"Adjusting '{asset}' down to its maximum allocation of {max_alloc}%."
+                )
+                self.allocations[asset] = max_alloc
+
+        # Calculate total allocation after enforcing constraints
+        total_alloc = sum(self.allocations.values())
+        self.logger.debug(
+            f"Total allocation after enforcing constraints: {total_alloc}%"
+        )
+
+        # Initialize a list of assets that can receive more allocation (not at max)
+        adjustable_assets = [
+            asset
+            for asset in self.allocations
+            if self.allocations[asset] < self.max_allocations.get(asset, 100.0)
+        ]
+
+        # Initialize a list of assets that can give up allocation (not at min)
+        reducible_assets = [
+            asset
+            for asset in self.allocations
+            if self.allocations[asset] > self.min_allocations.get(asset, 0.0)
+        ]
+
+        iteration = 0
+        while not math.isclose(total_alloc, 100.0, abs_tol=0.01) and iteration < 10:
+            iteration += 1
+            self.logger.debug(f"Rebalance iteration {iteration}")
+
+            if total_alloc < 100.0:
+                # Distribute the deficit proportionally among adjustable assets
+                deficit = 100.0 - total_alloc
+                self.logger.debug(f"Deficit to distribute: {deficit}%")
+                total_adjustable = sum(
+                    self.max_allocations.get(asset, 100.0) - self.allocations[asset]
+                    for asset in adjustable_assets
                 )
 
-            self.logger.info("Portfolio rebalanced to sum to 100%.")
-        else:
-            if math.isclose(total, 100.0, abs_tol=0.1):
-                self.logger.debug(
-                    "No rebalancing needed. Allocations already sum to 100%."
+                if total_adjustable == 0:
+                    self.logger.warning(
+                        "No room to increase allocations within max constraints."
+                    )
+                    break
+
+                for asset in adjustable_assets:
+                    max_alloc = self.max_allocations.get(asset, 100.0)
+                    alloc_increase = (
+                        (max_alloc - self.allocations[asset]) / total_adjustable
+                    ) * deficit
+                    new_alloc = self.allocations[asset] + alloc_increase
+                    self.allocations[asset] = min(new_alloc, max_alloc)
+                    self.logger.debug(
+                        f"Increased '{asset}' allocation by {alloc_increase:.2f}% to {self.allocations[asset]:.2f}%"
+                    )
+
+            elif total_alloc > 100.0:
+                # Reduce the excess proportionally from reducible assets
+                excess = total_alloc - 100.0
+                self.logger.debug(f"Excess to reduce: {excess}%")
+                total_reducible = sum(
+                    self.allocations[asset] - self.min_allocations.get(asset, 0.0)
+                    for asset in reducible_assets
                 )
-            else:
-                self.logger.warning("Total allocations are 0%. Rebalancing skipped.")
+
+                if total_reducible == 0:
+                    self.logger.warning(
+                        "No room to reduce allocations within min constraints."
+                    )
+                    break
+
+                for asset in reducible_assets:
+                    min_alloc = self.min_allocations.get(asset, 0.0)
+                    alloc_reduction = (
+                        (self.allocations[asset] - min_alloc) / total_reducible
+                    ) * excess
+                    new_alloc = self.allocations[asset] - alloc_reduction
+                    self.allocations[asset] = max(new_alloc, min_alloc)
+                    self.logger.debug(
+                        f"Reduced '{asset}' allocation by {alloc_reduction:.2f}% to {self.allocations[asset]:.2f}%"
+                    )
+
+            # Recalculate total allocation
+            total_alloc = sum(self.allocations.values())
+            self.logger.debug(
+                f"Total allocation after iteration {iteration}: {total_alloc}%"
+            )
+
+            # Update adjustable and reducible assets lists
+            adjustable_assets = [
+                asset
+                for asset in self.allocations
+                if self.allocations[asset] < self.max_allocations.get(asset, 100.0)
+            ]
+            reducible_assets = [
+                asset
+                for asset in self.allocations
+                if self.allocations[asset] > self.min_allocations.get(asset, 0.0)
+            ]
+
+        if iteration == 10:
+            self.logger.warning(
+                "Maximum iterations reached during rebalance. Allocations may not sum to exactly 100%."
+            )
+
+        self.logger.info("Rebalance complete.")
 
     def get_allocations(self) -> Dict[str, float]:
         """
