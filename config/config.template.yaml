@@ -24,4 +24,26 @@ storage:
   # class to save and retrieve recommendations. Adjust this path if you want to store
   # the recommendations in a different location or with a different file name.
 
-# Add any additional configuration sections or parameters below as needed for your project.
+# Allocation Constraints:
+# Defines the initial, minimum, and maximum allocation percentages for each asset type in the portfolio.
+# - `initial`: The starting allocation percentage for the asset.
+# - `min`: The minimum allowable allocation percentage to ensure sufficient exposure.
+# - `max`: The maximum allowable allocation percentage to prevent overexposure.
+# Each asset is accompanied by a comment describing its purpose within the portfolio. 
+ 
+allocations:
+  VBIRX:
+    initial: 40.0
+    min: 10.0
+    max: 70.0
+    # Vanguard Short-Term Bond Index Fund: Provides exposure to short-term investment-grade bonds.
+  VBLAX:
+    initial: 40.0
+    min: 10.0
+    max: 70.0
+    # Vanguard Long-Term Bond Index Fund: Provides exposure to long-term investment-grade bonds.
+  VTAPX:
+    initial: 20.0
+    min: 0.0
+    max: 30.0
+    # Vanguard Short-Term Inflation-Protected Securities Index Fund: Protects against inflation by investing in TIPS.

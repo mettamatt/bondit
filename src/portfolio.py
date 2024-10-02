@@ -12,9 +12,10 @@ Classes:
                and maintain a balanced portfolio.
 """
 
+import datetime
 import logging
 import math
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 
 class Portfolio:
@@ -29,6 +30,7 @@ class Portfolio:
         allocations (Dict[str, float]): Current allocation percentages for each asset type.
         min_allocations (Dict[str, float]): Minimum allocation percentages for each asset type.
         max_allocations (Dict[str, float]): Maximum allocation percentages for each asset type.
+        adjustment_history (List[Dict[str, Any]]): Records of all adjustments made to the portfolio.
         logger (logging.Logger): Logger instance for logging activities and debugging.
     """
 
@@ -50,23 +52,19 @@ class Portfolio:
             allocations (Optional[Dict[str, float]]):
                 Initial allocation percentages for each asset type. If None, starts with a default portfolio.
             min_allocations (Optional[Dict[str, float]]):
-                Minimum allocation percentages for each asset type. Defaults are set to 0% for all assets.
+                Minimum allocation percentages for each asset type.
             max_allocations (Optional[Dict[str, float]]):
-                Maximum allocation percentages for each asset type, based on provided constraints.
+                Maximum allocation percentages for each asset type.
             logger (Optional[logging.Logger], optional):
                 Logger instance for logging messages. If None, a default logger is used.
 
         Raises:
             ValueError: If initial allocations do not sum to 100%.
-
-        Example:
-            >>> portfolio = Portfolio(
-            ...     allocations={"VBIRX": 40.0, "VBLAX": 40.0, "VTAPX": 20.0},
-            ...     min_allocations={"VBIRX": 0.0, "VBLAX": 0.0, "VTAPX": 0.0},
-            ...     max_allocations={"VBIRX": 60.0, "VBLAX": 60.0, "VTAPX": 30.0}
-            ... )
         """
         self.logger: logging.Logger = logger or logging.getLogger("Bondit.Portfolio")
+
+        # Initialize adjustment history
+        self.adjustment_history: List[Dict[str, Any]] = []
 
         # Set default allocations if none provided
         default_allocations = {
@@ -79,20 +77,12 @@ class Portfolio:
             allocations.copy() if allocations else default_allocations.copy()
         )
 
-        # Set minimum allocations to 0% for all assets
-        default_min_allocations = {asset: 0.0 for asset in self.allocations.keys()}
+        # Assign min and max allocations from parameters
         self.min_allocations: Dict[str, float] = (
-            min_allocations.copy() if min_allocations else default_min_allocations
+            min_allocations.copy() if min_allocations else {}
         )
-
-        # Set maximum allocations based on the provided constraints
-        default_max_allocations = {
-            "VBIRX": 60.0,  # Allow up to 60% in Short-Term Bonds
-            "VBLAX": 60.0,  # Allow up to 60% in Long-Term Bonds
-            "VTAPX": 30.0,  # Allow up to 30% in TIPS
-        }
         self.max_allocations: Dict[str, float] = (
-            max_allocations.copy() if max_allocations else default_max_allocations
+            max_allocations.copy() if max_allocations else {}
         )
 
         self.logger.debug(
@@ -147,7 +137,7 @@ class Portfolio:
         rationale: str = "",
     ) -> None:
         """
-        Adjust the allocation for a specific asset type.
+        Adjust the allocation for a specific asset type without enforcing constraints immediately.
 
         Args:
             asset_type (str): The name of the asset type.
@@ -156,41 +146,44 @@ class Portfolio:
             rule_weight (float): The weight of the rule influencing the adjustment.
             rationale (str): The rationale for the adjustment.
         """
+        self.logger.debug(f"Attempting to adjust '{asset_type}' by {amount:+.2f}%.")
+
         old_alloc = self.allocations.get(asset_type, 0.0)
         proposed_alloc = old_alloc + amount
 
-        # Enforce min and max constraints
-        min_alloc = self.min_allocations.get(asset_type, 0.0)
-        max_alloc = self.max_allocations.get(asset_type, 100.0)
-        adjusted_amount = amount  # To track the final adjustment after constraints
+        # Record the adjustment without enforcing constraints
+        self.allocations[asset_type] = proposed_alloc
 
-        if proposed_alloc < min_alloc:
-            adjusted_amount = min_alloc - old_alloc
-            self.logger.warning(
-                f"Proposed allocation for '{asset_type}' is {proposed_alloc:.2f}%, "
-                f"which is below the minimum of {min_alloc}%. "
-                f"Adjusting allocation from {proposed_alloc:.2f}% to {min_alloc}%."
-            )
-            self.allocations[asset_type] = min_alloc
-        elif proposed_alloc > max_alloc:
-            adjusted_amount = max_alloc - old_alloc
-            self.logger.warning(
-                f"Proposed allocation for '{asset_type}' is {proposed_alloc:.2f}%, "
-                f"which exceeds the maximum of {max_alloc}%. "
-                f"Adjusting allocation from {proposed_alloc:.2f}% to {max_alloc}%."
-            )
-            self.allocations[asset_type] = max_alloc
-        else:
-            self.allocations[asset_type] = proposed_alloc
-
-        # Log the adjustment with detailed information
         self.logger.info(
-            f"Adjustment made by Rule '{rule_key}' (Weight: {rule_weight}) - "
+            f"Adjustment by Rule '{rule_key}' (Weight: {rule_weight}) - "
             f"Asset: '{asset_type}', "
-            f"Amount: {adjusted_amount:+.2f}%, "
+            f"Amount: {amount:+.2f}%, "
             f"Allocation: {old_alloc:.2f}% -> {self.allocations[asset_type]:.2f}%. "
             f"Rationale: {rationale}"
         )
+
+        # Record the adjustment
+        adjustment_record = {
+            "Adjustment Type": rule_key,
+            "Asset": asset_type,
+            "Action": f"{'Increased' if amount > 0 else 'Decreased'} by {abs(amount):.2f}%.",
+            "Amount": f"{amount:+.2f}%",
+            "Rationale": rationale,
+            "Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        }
+        self.adjustment_history.append(adjustment_record)
+
+        # Constraints will be enforced during rebalance
+
+    def get_adjustments(self) -> List[Dict[str, Any]]:
+        """
+        Retrieve the adjustment history of the portfolio.
+
+        Returns:
+            List[Dict[str, Any]]: A list of adjustment records.
+        """
+        self.logger.debug("Retrieving adjustment history.")
+        return self.adjustment_history.copy()
 
     def set_allocations(self, allocations: Dict[str, float]) -> None:
         """
@@ -233,8 +226,6 @@ class Portfolio:
             Sets "TIPS" allocation to 5.0%.
         """
         self.logger.debug(f"Setting allocation for '{asset_type}' to {alloc}%.")
-
-        # Enforce constraints
         min_alloc = self.min_allocations.get(asset_type, 0.0)
         max_alloc = self.max_allocations.get(asset_type, 100.0)
 
@@ -256,6 +247,9 @@ class Portfolio:
             f"Set allocation for '{asset_type}': {constrained_alloc:.2f}%."
         )
 
+        # Validate allocations after setting
+        self.validate_allocations()
+
     def rebalance(self) -> None:
         """
         Rebalance the portfolio to ensure total allocations sum to 100%,
@@ -263,13 +257,12 @@ class Portfolio:
         """
         self.logger.debug("Starting rebalance process.")
 
-        # First, enforce min and max constraints on current allocations
+        # Enforce min and max constraints
         for asset in self.allocations:
             alloc = self.allocations[asset]
             min_alloc = self.min_allocations.get(asset, 0.0)
             max_alloc = self.max_allocations.get(asset, 100.0)
 
-            # Enforce constraints
             if alloc < min_alloc:
                 self.logger.debug(
                     f"Adjusting '{asset}' up to its minimum allocation of {min_alloc}%."
@@ -281,106 +274,112 @@ class Portfolio:
                 )
                 self.allocations[asset] = max_alloc
 
-        # Calculate total allocation after enforcing constraints
-        total_alloc = sum(self.allocations.values())
-        self.logger.debug(
-            f"Total allocation after enforcing constraints: {total_alloc}%"
-        )
-
-        # Initialize a list of assets that can receive more allocation (not at max)
-        adjustable_assets = [
-            asset
-            for asset in self.allocations
-            if self.allocations[asset] < self.max_allocations.get(asset, 100.0)
-        ]
-
-        # Initialize a list of assets that can give up allocation (not at min)
-        reducible_assets = [
-            asset
-            for asset in self.allocations
-            if self.allocations[asset] > self.min_allocations.get(asset, 0.0)
-        ]
-
+        # Iteratively adjust allocations
+        max_iterations = 20
         iteration = 0
-        while not math.isclose(total_alloc, 100.0, abs_tol=0.01) and iteration < 10:
-            iteration += 1
-            self.logger.debug(f"Rebalance iteration {iteration}")
 
-            if total_alloc < 100.0:
-                # Distribute the deficit proportionally among adjustable assets
-                deficit = 100.0 - total_alloc
-                self.logger.debug(f"Deficit to distribute: {deficit}%")
-                total_adjustable = sum(
+        while iteration < max_iterations:
+            total_alloc = sum(self.allocations.values())
+            deviation = total_alloc - 100.0
+
+            self.logger.debug(
+                f"Iteration {iteration}: Total allocations sum to {total_alloc:.2f}%, deviation of {deviation:+.2f}%."
+            )
+
+            if abs(deviation) < 1e-2:
+                self.logger.debug("Allocations successfully normalized to sum to 100%.")
+                break
+
+            # Identify adjustable assets
+            if deviation > 0:
+                # Need to decrease allocations
+                adjustable_assets = [
+                    asset
+                    for asset in self.allocations
+                    if self.allocations[asset] > self.min_allocations.get(asset, 0.0)
+                ]
+            else:
+                # Need to increase allocations
+                adjustable_assets = [
+                    asset
+                    for asset in self.allocations
+                    if self.allocations[asset] < self.max_allocations.get(asset, 100.0)
+                ]
+
+            if not adjustable_assets:
+                self.logger.warning(
+                    "No adjustable assets available to rebalance allocations."
+                )
+                break
+
+            # Calculate total flexibility
+            if deviation > 0:
+                total_flex = sum(
+                    self.allocations[asset] - self.min_allocations.get(asset, 0.0)
+                    for asset in adjustable_assets
+                )
+            else:
+                total_flex = sum(
                     self.max_allocations.get(asset, 100.0) - self.allocations[asset]
                     for asset in adjustable_assets
                 )
 
-                if total_adjustable == 0:
-                    self.logger.warning(
-                        "No room to increase allocations within max constraints."
-                    )
-                    break
-
-                for asset in adjustable_assets:
-                    max_alloc = self.max_allocations.get(asset, 100.0)
-                    alloc_increase = (
-                        (max_alloc - self.allocations[asset]) / total_adjustable
-                    ) * deficit
-                    new_alloc = self.allocations[asset] + alloc_increase
-                    self.allocations[asset] = min(new_alloc, max_alloc)
-                    self.logger.debug(
-                        f"Increased '{asset}' allocation by {alloc_increase:.2f}% to {self.allocations[asset]:.2f}%"
-                    )
-
-            elif total_alloc > 100.0:
-                # Reduce the excess proportionally from reducible assets
-                excess = total_alloc - 100.0
-                self.logger.debug(f"Excess to reduce: {excess}%")
-                total_reducible = sum(
-                    self.allocations[asset] - self.min_allocations.get(asset, 0.0)
-                    for asset in reducible_assets
-                )
-
-                if total_reducible == 0:
-                    self.logger.warning(
-                        "No room to reduce allocations within min constraints."
-                    )
-                    break
-
-                for asset in reducible_assets:
-                    min_alloc = self.min_allocations.get(asset, 0.0)
-                    alloc_reduction = (
-                        (self.allocations[asset] - min_alloc) / total_reducible
-                    ) * excess
-                    new_alloc = self.allocations[asset] - alloc_reduction
-                    self.allocations[asset] = max(new_alloc, min_alloc)
-                    self.logger.debug(
-                        f"Reduced '{asset}' allocation by {alloc_reduction:.2f}% to {self.allocations[asset]:.2f}%"
-                    )
-
-            # Recalculate total allocation
-            total_alloc = sum(self.allocations.values())
             self.logger.debug(
-                f"Total allocation after iteration {iteration}: {total_alloc}%"
+                f"Total flexibility available for adjustment: {total_flex:.2f}%."
             )
 
-            # Update adjustable and reducible assets lists
-            adjustable_assets = [
-                asset
-                for asset in self.allocations
-                if self.allocations[asset] < self.max_allocations.get(asset, 100.0)
-            ]
-            reducible_assets = [
-                asset
-                for asset in self.allocations
-                if self.allocations[asset] > self.min_allocations.get(asset, 0.0)
-            ]
+            if total_flex == 0:
+                self.logger.warning(
+                    "Total flexible allocation is zero. Cannot rebalance further."
+                )
+                break
 
-        if iteration == 10:
+            # Adjust allocations proportionally
+            for asset in adjustable_assets:
+                if deviation > 0:
+                    # Decrease allocation
+                    flex = self.allocations[asset] - self.min_allocations.get(
+                        asset, 0.0
+                    )
+                    if flex <= 0:
+                        self.logger.debug(f"No flexibility to decrease '{asset}'.")
+                        continue
+                    adjustment = (flex / total_flex) * deviation
+                    adjustment = min(
+                        adjustment, flex
+                    )  # Ensure we don't go below min_alloc
+                    self.allocations[asset] -= adjustment
+                    self.logger.debug(
+                        f"Decreased '{asset}' by {adjustment:.2f}% to {self.allocations[asset]:.2f}%."
+                    )
+                else:
+                    # Increase allocation
+                    flex = (
+                        self.max_allocations.get(asset, 100.0) - self.allocations[asset]
+                    )
+                    if flex <= 0:
+                        self.logger.debug(f"No flexibility to increase '{asset}'.")
+                        continue
+                    adjustment = (flex / total_flex) * (-deviation)
+                    adjustment = min(
+                        adjustment, flex
+                    )  # Ensure we don't exceed max_alloc
+                    self.allocations[asset] += adjustment
+                    self.logger.debug(
+                        f"Increased '{asset}' by {adjustment:.2f}% to {self.allocations[asset]:.2f}%."
+                    )
+
+            iteration += 1
+
+        # Final validation
+        total_alloc = sum(self.allocations.values())
+        if not math.isclose(total_alloc, 100.0, abs_tol=1e-2):
             self.logger.warning(
-                "Maximum iterations reached during rebalance. Allocations may not sum to exactly 100%."
+                f"Total allocations after rebalance sum to {total_alloc:.2f}%, which deviates from the expected 100%."
             )
-
+        else:
+            self.logger.debug("Allocations successfully rebalanced to sum to 100%.")
+        self.validate_allocations()
         self.logger.info("Rebalance complete.")
 
     def get_allocations(self) -> Dict[str, float]:
@@ -389,32 +388,39 @@ class Portfolio:
 
         Returns:
             Dict[str, float]: A copy of the current allocation percentages for each asset type.
-
-        Example:
-            >>> current_allocations = portfolio.get_allocations()
-            >>> print(current_allocations)
-            {'Long-Term Government Bond': 30.0, 'Short-Term Bonds': 10.0}
         """
-        self.logger.debug(f"Retrieving current allocations: {self.allocations}")
         return self.allocations.copy()
 
-    def validate_total_allocation(self) -> None:
+    def validate_allocations(self) -> None:
         """
-        Validate that the total allocations sum to approximately 100%.
-
-        Logs a warning if the total allocation deviates from 100%, aiding in maintaining portfolio integrity.
-
-        Example:
-            >>> portfolio.validate_total_allocation()
-            Validates that allocations sum to approximately 100%.
+        Validate that all allocations adhere to their respective constraints and that the total
+        allocations sum to approximately 100%. Logs detailed warnings for any violations.
         """
+        self.logger.debug("Validating portfolio allocations.")
         total_alloc = sum(self.allocations.values())
+
+        # Check each asset's allocation against its constraints
+        for asset, alloc in self.allocations.items():
+            min_alloc = self.min_allocations.get(asset, 0.0)
+            max_alloc = self.max_allocations.get(asset, 100.0)
+            if alloc < min_alloc:
+                self.logger.warning(
+                    f"Allocation for '{asset}' is below the minimum of {min_alloc}%. Current allocation: {alloc:.2f}%."
+                )
+            if alloc > max_alloc:
+                self.logger.warning(
+                    f"Allocation for '{asset}' exceeds the maximum of {max_alloc}%. Current allocation: {alloc:.2f}%."
+                )
+
+        # Check if total allocations sum to 100%
         if not math.isclose(total_alloc, 100.0, abs_tol=0.1):
             self.logger.warning(
                 f"Total allocations sum to {total_alloc:.2f}%, which deviates from the expected 100%."
             )
         else:
-            self.logger.debug("Total allocations correctly sum to 100%.")
+            self.logger.debug(
+                "All allocations are within defined constraints and sum to 100%."
+            )
 
     def get_all_asset_types(self) -> list:
         """

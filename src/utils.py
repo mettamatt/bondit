@@ -32,9 +32,10 @@ Functions:
 """
 
 import logging
+import math
 import os
 import sys
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import yaml
 
@@ -289,3 +290,56 @@ def initialize_portfolio(logger: logging.Logger) -> Portfolio:
     except Exception as e:
         logger.critical(f"Error initializing Portfolio: {e}", exc_info=True)
         sys.exit(1)
+
+
+def parse_allocations(
+    config: Dict[str, Any], logger: logging.Logger
+) -> Tuple[
+    Dict[str, float], Dict[str, float], Dict[str, float], Dict[str, Dict[str, float]]
+]:
+    """
+    Parse allocations from the configuration.
+
+    Args:
+        config (Dict[str, Any]): The loaded configuration dictionary.
+        logger (logging.Logger): Logger instance for logging.
+
+    Returns:
+        Tuple containing:
+            - initial_allocations (Dict[str, float])
+            - min_allocations (Dict[str, float])
+            - max_allocations (Dict[str, float])
+            - allocation_constraints (Dict[str, Dict[str, float]])
+    """
+    allocations_config = config.get("allocations", {})
+    initial_allocations = {}
+    min_allocations = {}
+    max_allocations = {}
+    allocation_constraints = {}
+
+    for asset, alloc_values in allocations_config.items():
+        initial = alloc_values.get("initial")
+        min_alloc = alloc_values.get("min")
+        max_alloc = alloc_values.get("max")
+
+        if initial is None or min_alloc is None or max_alloc is None:
+            logger.error(
+                f"Allocation for '{asset}' must include 'initial', 'min', and 'max' values."
+            )
+            sys.exit(1)
+
+        initial_allocations[asset] = initial
+        min_allocations[asset] = min_alloc
+        max_allocations[asset] = max_alloc
+
+        allocation_constraints[asset] = {"min": min_alloc, "max": max_alloc}
+
+    # Verify that initial allocations sum to 100%
+    total_initial_alloc = sum(initial_allocations.values())
+    if not math.isclose(total_initial_alloc, 100.0, abs_tol=1e-2):
+        logger.error(
+            f"Initial allocations sum to {total_initial_alloc}%, expected 100%."
+        )
+        sys.exit(1)
+
+    return initial_allocations, min_allocations, max_allocations, allocation_constraints

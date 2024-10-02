@@ -13,14 +13,16 @@ import sys
 from datetime import datetime
 from typing import Optional
 
+# Import INDICATORS from config.py
 from .config import INDICATORS
 from .decision_engine import DecisionEngine
+from .portfolio import Portfolio
 from .utils import (
     collect_economic_indicators,
     initialize_data_storage_and_fetcher,
     initialize_logger,
-    initialize_portfolio,
     load_configuration,
+    parse_allocations,
 )
 
 
@@ -58,10 +60,16 @@ def main(rebalancing_date: Optional[str] = None) -> None:
         "storage.fred_file_path",
         "storage.recommendation_file_path",
         "api.fred_api_key",
+        "allocations",  # Added allocations as a required field
     ]
 
     # Load and validate the configuration settings
-    config = load_configuration(config_path, logger, required_config_fields)
+    try:
+        config = load_configuration(config_path, logger, required_config_fields)
+        logger.info("Configuration loaded successfully.")
+    except Exception as e:
+        logger.critical(f"Failed to load configuration: {e}")
+        sys.exit(1)
 
     # **Specify Rebalancing Date in main.py**
     if rebalancing_date:
@@ -82,24 +90,60 @@ def main(rebalancing_date: Optional[str] = None) -> None:
         )
 
     # Initialize data storage and fetcher components
-    fetcher = initialize_data_storage_and_fetcher(config, logger)
+    try:
+        fetcher = initialize_data_storage_and_fetcher(config, logger)
+        logger.info("Data storage and fetcher initialized.")
+    except Exception as e:
+        logger.critical(f"Failed to initialize data storage and fetcher: {e}")
+        sys.exit(1)
 
     # Step 1: Collect economic data and create EconomicIndicator instances
-    indicators = collect_economic_indicators(
-        fetcher,
-        config.get("indicators", INDICATORS),
-        logger,
-        rebalancing_date=rebalancing_date,  # Pass the rebalancing date
-    )
+    try:
+        indicators = collect_economic_indicators(
+            fetcher,
+            INDICATORS,  # Pass INDICATORS directly
+            logger,
+            rebalancing_date=rebalancing_date,  # Pass the rebalancing date
+        )
+        logger.info("Economic indicators collected successfully.")
+    except Exception as e:
+        logger.critical(f"Failed to collect economic indicators: {e}")
+        sys.exit(1)
 
-    # Step 2: Initialize the investment portfolio
-    portfolio = initialize_portfolio(logger)
+    # Step 2: Initialize the investment portfolio with allocation constraints
+    try:
+        (
+            initial_allocations,
+            min_allocations,
+            max_allocations,
+            allocation_constraints,
+        ) = parse_allocations(config, logger)
+
+        # Initialize the Portfolio with the parsed allocations
+        portfolio = Portfolio(
+            allocations=initial_allocations,
+            min_allocations=min_allocations,
+            max_allocations=max_allocations,
+            logger=logger,
+        )
+        logger.info("Portfolio initialized successfully.")
+    except ValueError as e:
+        logger.critical(f"Failed to initialize Portfolio: {e}")
+        sys.exit(1)
+    except KeyError as e:
+        logger.critical(f"Missing allocation key in configuration: {e}")
+        sys.exit(1)
+    except Exception as e:
+        logger.critical(f"Unexpected error during Portfolio initialization: {e}")
+        sys.exit(1)
 
     # Step 3: Apply the Decision Engine to adjust portfolio allocations
     try:
         decision_engine = DecisionEngine(
             indicators=indicators,
             portfolio=portfolio,
+            allocation_constraints=allocation_constraints,  # Now correctly defined
+            logger=logger,
         )
         logger.info("Decision Engine initialized.")
         decision_engine.apply_decision_rules()

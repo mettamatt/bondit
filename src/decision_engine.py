@@ -17,7 +17,7 @@ import logging
 import math
 import shutil
 import subprocess
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from .decision_rules.decision_rules import DecisionRules
 from .indicators import EconomicIndicator
@@ -35,11 +35,10 @@ class DecisionEngine:
     Attributes:
         indicators (Dict[str, EconomicIndicator]): A dictionary of economic indicators used for analysis.
         portfolio (Portfolio): The investment portfolio to be managed and adjusted.
-        rule_messages (Dict[str, List[str]]): Messages associated with each decision rule applied.
-        adjustments (List[Dict[str, Any]]): List of individual asset adjustments made.
         max_adjustment (float): Maximum percentage adjustment allowed for any operation.
         logger (logging.Logger): Logger instance for logging activities and debugging.
         baseline_allocations (Dict[str, float]): Strategic baseline allocations for portfolio assets.
+        allocation_constraints (Dict[str, Dict[str, float]]): Allocation constraints for each asset.
         asset_risk_levels (Dict[str, float]): Risk levels assigned to each asset class.
         max_portfolio_risk (float): Maximum acceptable average risk level for the portfolio.
         analysis_results (Dict[str, Dict[str, Any]]): Results from analyzing each economic indicator.
@@ -49,6 +48,7 @@ class DecisionEngine:
         self,
         indicators: Dict[str, EconomicIndicator],
         portfolio: Portfolio,
+        allocation_constraints: Dict[str, Dict[str, float]],
         logger: Optional[logging.Logger] = None,
     ) -> None:
         """
@@ -59,18 +59,18 @@ class DecisionEngine:
                 Dictionary of EconomicIndicator objects used for portfolio analysis.
             portfolio (Portfolio):
                 The Portfolio object to adjust based on economic indicators.
+            allocation_constraints (Dict[str, Dict[str, float]]):
+                Allocation constraints for each asset, defining minimum and maximum percentages.
             logger (Optional[logging.Logger], optional):
                 Logger instance for logging messages. If None, a default logger is used.
 
         Raises:
-            ValueError: If baseline allocations do not sum to 100%.
+            ValueError: If baseline allocations do not sum to 100% or violate allocation constraints.
         """
         self.indicators: Dict[str, EconomicIndicator] = indicators
         self.portfolio: Portfolio = portfolio
-        self.rule_messages: Dict[str, List[str]] = {}
-        self.adjustments: List[Dict[str, Any]] = []
         self.max_adjustment: float = (
-            10.0  # Maximum adjustment percentage for all operations
+            25.0  # Maximum adjustment percentage for all operations
         )
         self.logger: logging.Logger = logger or logging.getLogger(
             "Bondit.DecisionEngine"
@@ -83,6 +83,11 @@ class DecisionEngine:
             "VTAPX": 20.0,  # Vanguard Short-Term Inflation-Protected Securities Index Fund
         }
 
+        # Define allocation constraints for each asset from centralized config
+        self.allocation_constraints: Dict[str, Dict[str, float]] = (
+            allocation_constraints
+        )
+
         if not math.isclose(
             sum(self.baseline_allocations.values()), 100.0, abs_tol=0.1
         ):
@@ -90,6 +95,9 @@ class DecisionEngine:
                 "Baseline allocations do not sum to 100%. Initialization aborted."
             )
             raise ValueError("Baseline allocations must sum to 100%.")
+
+        # Validate baseline allocations against allocation constraints
+        self._validate_allocation_constraints(self.baseline_allocations)
 
         # Define asset risk levels (higher number indicates higher risk)
         self.asset_risk_levels: Dict[str, float] = {
@@ -108,6 +116,42 @@ class DecisionEngine:
             self.logger.debug(f"Analyzing indicator '{indicator_key}'.")
             self.analysis_results[indicator_key] = indicator.analyze_indicator()
         self.logger.info("DecisionEngine initialized with analysis results.")
+
+    def apply_decision_rules(self) -> None:
+        """
+        Apply all decision rules to adjust the investment portfolio based on economic indicators.
+        """
+        self.logger.debug("Applying decision rules to the portfolio.")
+        DecisionRules.apply_all_rules(self)
+        self.portfolio.rebalance()
+        self.logger.info(
+            "Decision rules applied and allocations normalized successfully."
+        )
+
+    def _validate_allocation_constraints(self, allocations: Dict[str, float]) -> None:
+        """
+        Validate that the provided allocations adhere to the defined allocation constraints.
+
+        Args:
+            allocations (Dict[str, float]): The allocations to validate.
+
+        Raises:
+            ValueError: If any allocation violates its constraints.
+        """
+        for asset, allocation in allocations.items():
+            constraints = self.allocation_constraints.get(asset)
+            if constraints:
+                min_alloc = constraints["min"]
+                max_alloc = constraints["max"]
+                if allocation < min_alloc or allocation > max_alloc:
+                    self.logger.critical(
+                        f"Initial allocation for '{asset}' is {allocation}%, which "
+                        f"violates constraints ({min_alloc}%-{max_alloc}%). Initialization aborted."
+                    )
+                    raise ValueError(
+                        f"Initial allocation for '{asset}' must be between {min_alloc}% and {max_alloc}%."
+                    )
+        self.logger.debug("Initial allocations comply with allocation constraints.")
 
     def get_rule_weight(self, rule_key: str) -> float:
         """
@@ -129,32 +173,6 @@ class DecisionEngine:
             )
             return 1.0  # Default weight if not specified
 
-    def apply_decision_rules(self) -> None:
-        """
-        Apply all decision rules to adjust the portfolio based on economic indicators.
-
-        This method applies each decision rule in a prioritized order and adjusts the portfolio
-        allocations accordingly. After adjustments, it generates a rebalancing report summarizing
-        the actions taken.
-        """
-        self.logger.info("Applying decision rules.")
-        self.rule_messages = {}
-        self.adjustments = []  # Reset adjustments for the current cycle
-
-        if self.is_empty():
-            self.logger.info(
-                "Portfolio is empty. Initializing with baseline allocations."
-            )
-            self.initialize_allocations()
-        else:
-            self.logger.info("Applying adjustments based on decision rules.")
-            DecisionRules.apply_all_rules(self)
-
-            self.logger.info("Rebalancing portfolio after adjustments.")
-            self.portfolio.rebalance()
-
-        self.logger.info("Decision rules applied and portfolio adjusted.")
-
     def initialize_allocations(self) -> None:
         """
         Initialize the portfolio allocations based on the baseline allocations and apply
@@ -169,7 +187,7 @@ class DecisionEngine:
         self, asset: str, amount: float, rule: str, rule_weight: float, rationale: str
     ) -> None:
         """
-        Adjust the allocation for a specific asset based on a decision rule.
+        Adjust the allocation for a specific asset based on a decision rule, enforcing allocation constraints.
 
         Args:
             asset (str): The asset to adjust.
@@ -178,28 +196,47 @@ class DecisionEngine:
             rule_weight (float): The weight of the decision rule.
             rationale (str): The strategic justification for the action.
         """
-        # Limit adjustment to the maximum allowed
-        if abs(amount) > self.max_adjustment:
-            adjusted_amount = math.copysign(self.max_adjustment, amount)
+        current_allocation = self.portfolio.allocations.get(asset, 0.0)
+        constraints = self.allocation_constraints.get(asset, {"min": 0.0, "max": 100.0})
+        min_alloc = constraints["min"]
+        max_alloc = constraints["max"]
+
+        proposed_allocation = current_allocation + amount
+
+        # Enforce allocation constraints
+        if proposed_allocation < min_alloc:
+            adjusted_amount = min_alloc - current_allocation
             self.logger.warning(
-                f"Adjustment for '{asset}' by {amount:.2f}% exceeds max adjustment. Capped to {adjusted_amount:.2f}%."
+                f"Adjustment for '{asset}' by {amount:.2f}% would fall below the minimum of {min_alloc}%. "
+                f"Capping adjustment to {adjusted_amount:.2f}%."
+            )
+            amount = adjusted_amount
+        elif proposed_allocation > max_alloc:
+            adjusted_amount = max_alloc - current_allocation
+            self.logger.warning(
+                f"Adjustment for '{asset}' by {amount:.2f}% would exceed the maximum of {max_alloc}%. "
+                f"Capping adjustment to {adjusted_amount:.2f}%."
             )
             amount = adjusted_amount
 
-        self.portfolio.adjust_allocation(asset, amount, rule, rule_weight)
+        if amount == 0.0:
+            self.logger.info(
+                f"No adjustment made for '{asset}' as it is already at its allocation constraint."
+            )
+            return  # No adjustment needed
 
-        adjustment_record = {
-            "Adjustment Type": self.indicators[rule].config.description,
-            "Asset": asset,
-            "Action": f"{'Increased' if amount > 0 else 'Decreased'} by {abs(amount):.2f}%.",
-            "Amount": f"{'+' if amount > 0 else ''}{amount:.2f}%",
-            "Rationale": rationale,
-        }
-        self.adjustments.append(adjustment_record)
-
-        self.logger.info(
-            f"{adjustment_record['Adjustment Type']}: {adjustment_record['Action']} Rationale: {adjustment_record['Rationale']}"
-        )
+        # Apply the adjustment to the portfolio
+        try:
+            self.portfolio.adjust_allocation(
+                asset, amount, rule, rule_weight, rationale
+            )
+            self.logger.info(
+                f"Adjusted '{asset}' by {amount:.2f}% based on rule '{rule}': {rationale}"
+            )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to adjust allocation for '{asset}' by {amount:.2f}%: {e}"
+            )
 
     def generate_rebalancing_report(self) -> str:
         """
@@ -254,7 +291,8 @@ class DecisionEngine:
             "|------------------------------------|--------------|------------------------------------------------|------------|-------------------------------------------------------------------------------------------------------|"
         )
 
-        for adjustment in self.adjustments:
+        # Retrieve adjustments from the Portfolio
+        for adjustment in self.portfolio.get_adjustments():
             report_lines.append(
                 f"| **{adjustment['Adjustment Type']}**  | {adjustment['Asset']} | {adjustment['Action']} | {adjustment['Amount']} | {adjustment['Rationale']} |"
             )
@@ -297,9 +335,9 @@ class DecisionEngine:
             with open(file_path, "w") as file:
                 file.write(report)
             self.logger.info(f"Rebalancing report saved to {file_path}.")
-        except Exception as e:
+        except IOError as e:
             self.logger.error(f"Failed to save rebalancing report to {file_path}: {e}")
-            return  # Early exit if saving fails
+            raise
 
         if view:
             self.view_rebalancing_report(file_path)
@@ -330,31 +368,7 @@ class DecisionEngine:
                 f"An unexpected error occurred while opening the report: {e}"
             )
 
-    def _add_rule_message(self, rule: str, message: str) -> None:
-        """
-        Add a message to the rule_messages dictionary for a given rule.
-
-        Args:
-            rule (str): The identifier of the decision rule.
-            message (str): The message to associate with the rule.
-        """
-        if rule not in self.rule_messages:
-            self.rule_messages[rule] = []
-        self.rule_messages[rule].append(message)
-        self.logger.debug(f"Added message to rule '{rule}': {message}")
-
     # Helper Methods
-
-    def is_empty(self) -> bool:
-        """
-        Check if the portfolio has any allocations.
-
-        Returns:
-            bool: True if the portfolio has no allocations, False otherwise.
-        """
-        empty = not bool(self.portfolio.allocations)
-        self.logger.debug(f"Portfolio is {'empty' if empty else 'not empty'}.")
-        return empty
 
     def _validate_indicator_data(
         self, indicator_name: str, *keys: str
