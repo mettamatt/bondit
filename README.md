@@ -143,17 +143,41 @@ Bondit leverages a set of high-level economic indicators to inform its decision-
 
 ### Economic Indicators
 
-| Indicator Name                                                    | Series ID      | Description                                                     | Type      | Calculation Method            | Thresholds           | Rule Weight |
-|-------------------------------------------------------------------|----------------|-----------------------------------------------------------------|-----------|-------------------------------|----------------------|-------------|
-| **Federal Funds Rate**                                            | FEDFUNDS       | Federal Funds Rate                                             | Monthly   | Z-Score                        | (1.0, -1.0)           | 1.0         |
-| **Consumer Price Index (CPI)**                                    | CPIAUCSL       | Composite CPI & PCE Inflation                                   | Monthly   | Year-Over-Year Change         | (2.5, 2.0)            | 0.9         |
-| **Personal Consumption Expenditures Price Index (PCE)**           | PCEPI          | Composite CPI & PCE Inflation                                   | Monthly   | Year-Over-Year Change         | (2.5, 2.0)            | 0.9         |
-| **5-Year Breakeven Inflation Rate**                               | T5YIE          | Breakeven Inflation                                            | Daily     | Basis Points Change           | (10, -10)             | 0.8         |
-| **Yield Spread**                                                  | T10Y2Y         | Yield Spread                                                   | Daily     | Basis Points Change           | (50, -50)             | 0.7         |
-| **Recession Probabilities**                                       | RECPROUSM156N  | Recession Probability                                          | Monthly   | Current Value                 | (25.0, 15.0)          | 0.6         |
-| **Moody's BAA Corporate Bond Yield Minus 10-Year Treasury Yield** | BAA10YM        | Credit Spread                                                  | Monthly   | Basis Points Change           | (50, -50)             | 0.5         |
-| **Real Gross Domestic Product (GDP)**                             | GDPC1          | GDP Growth Rate                                                | Quarterly | CAGR                           | (3.0, 2.0)            | 0.4         |
-| **Unemployment Rate**                                             | UNRATE         | Unemployment Rate                                              | Monthly   | Absolute Change               | (0.5, -0.5)           | 0.3         |
+| Indicator Name                                                    | Series ID      | Description                                                     | Type      | Calculation Method            | Thresholds           | Time Frame Weights (Years: Weight)                  | Rule Weight |
+|-------------------------------------------------------------------|----------------|-----------------------------------------------------------------|-----------|-------------------------------|----------------------|------------------------------------------------------|-------------|
+| **Federal Funds Rate**                                            | FEDFUNDS       | Federal Funds Rate                                             | Monthly   | Z-Score                        | (1.0, -1.0)           | 1y: 0.30, 3y: 0.40, 5y: 0.30                        | 1.0         |
+| **Consumer Price Index (CPI)**                                    | CPIAUCSL       | Composite CPI & PCE Inflation                                   | Monthly   | Year-Over-Year Change         | (2.5, 2.0)            | 1y: 1.00                                             | 0.9         |
+| **Personal Consumption Expenditures Price Index (PCE)**           | PCEPI          | Composite CPI & PCE Inflation                                   | Monthly   | Year-Over-Year Change         | (2.5, 2.0)            | 1y: 1.00                                             | 0.9         |
+| **5-Year Breakeven Inflation Rate**                               | T5YIE          | Breakeven Inflation                                            | Daily     | Basis Points Change           | (10, -10)             | 1y: 1.00                                             | 0.8         |
+| **Yield Spread**                                                  | T10Y2Y         | Yield Spread                                                   | Daily     | Basis Points Change           | (50, -50)             | 1y: 0.20, 3y: 0.50, 5y: 0.30                        | 0.7         |
+| **Recession Probabilities**                                       | RECPROUSM156N  | Recession Probability                                          | Monthly   | Current Value                 | (25.0, 15.0)          | 1y: 1.00                                             | 0.6         |
+| **Moody's BAA Corporate Bond Yield Minus 10-Year Treasury Yield** | BAA10YM        | Credit Spread                                                  | Monthly   | Basis Points Change           | (50, -50)             | 1y: 0.25, 3y: 0.50, 5y: 0.25                        | 0.5         |
+| **Real Gross Domestic Product (GDP)**                             | GDPC1          | GDP Growth Rate                                                | Quarterly | CAGR                           | (3.0, 2.0)            | 1y: 1.00                                             | 0.4         |
+| **Unemployment Rate**                                             | UNRATE         | Unemployment Rate                                              | Monthly   | Absolute Change               | (0.5, -0.5)           | 1y: 1.00                                             | 0.3         |
+
+### Time Frame Weights and Their Usage
+
+Each economic indicator is analyzed across multiple time frames (in years), with each time frame assigned a specific weight. These **Time Frame Weights** determine the importance of each period in the overall analysis of the indicator. The weighted analysis allows Bondit to consider both short-term and long-term trends when making portfolio adjustment decisions.
+
+**How Time Frame Weights are Used:**
+
+1. **Multi-Time Frame Analysis:** For each indicator, data is analyzed over different time frames (e.g., 1-year, 3-year, 5-year periods). Each time frame provides insight into the indicator's behavior over varying durations.
+
+2. **Weighted Aggregation:** The changes calculated for each time frame are multiplied by their respective weights. This weighted sum represents the overall influence of the indicator on the portfolio adjustments.
+
+3. **Overall Trend Determination:** The aggregated weighted changes help in determining the overall trend (Rising, Falling, Stable) for each indicator, which in turn influences how the portfolio allocations are adjusted.
+
+4. **Balancing Short-term and Long-term Insights:** By assigning different weights to various time frames, Bondit balances the immediate economic conditions with longer-term trends, ensuring a well-rounded investment strategy.
+
+**Example:**
+
+For the **Federal Funds Rate**, the time frame weights are:
+
+- **1 Year:** 30%
+- **3 Years:** 40%
+- **5 Years:** 30%
+
+This means that the 3-year analysis has the highest influence on the overall trend determination, ensuring that medium-term trends are given more consideration while still accounting for short-term and long-term movements.
 
 ### Decision Rules
 
@@ -173,6 +197,7 @@ Each economic indicator is associated with specific decision rules that determin
 ### How They Influence Portfolio Adjustments
 
 - **High Rule Weight**: Indicators like the Federal Funds Rate (`FEDFUNDS`) with higher rule weights have a more significant impact on portfolio adjustments.
+- **Time Frame Weights**: Each indicator's analysis across multiple time frames is weighted to reflect the importance of short-term versus long-term trends.
 - **Thresholds**: Each indicator has predefined thresholds that trigger specific actions when breached.
 - **Action Taken**: Based on the analysis, the Decision Engine will increase or decrease allocations to specific assets to align the portfolio with current economic conditions.
 
