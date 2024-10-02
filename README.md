@@ -26,8 +26,8 @@
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/yourusername/bondit-portfolio-management.git
-   cd bondit-portfolio-management
+   git clone https://github.com/mettamatt/bondit.git
+   cd bondit
    ```
 
 2. **Create a Virtual Environment (Optional but Recommended)**
