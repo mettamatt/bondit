@@ -119,10 +119,10 @@ def prepare_etf_data(
                 logger.warning(
                     f"'Close' data contains missing values for ETF {symbol}. Forward filling missing values."
                 )
-                df["close"].fillna(method="ffill", inplace=True)
-                df["open"].fillna(method="ffill", inplace=True)
-                df["high"].fillna(method="ffill", inplace=True)
-                df["low"].fillna(method="ffill", inplace=True)
+                df["close"].fillna(method="ffill", inplace=True)  # type: ignore
+                df["open"].fillna(method="ffill", inplace=True)  # type: ignore
+                df["high"].fillna(method="ffill", inplace=True)  # type: ignore
+                df["low"].fillna(method="ffill", inplace=True)  # type: ignore
                 df["volume"].fillna(0, inplace=True)  # Set missing volume to 0
             # Set index
             df.set_index("date", inplace=True)
