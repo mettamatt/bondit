@@ -34,7 +34,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, TypeVar, cast
 
 import requests
-from dateutil.relativedelta import relativedelta  # For accurate date arithmetic
+from dateutil.relativedelta import relativedelta
 
 from .config import ANALYSIS_START_DATE, INDICATORS, IndicatorConfig, IndicatorType
 from .data_storage import FredDataStorage, StorageMixin
