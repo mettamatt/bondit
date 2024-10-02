@@ -28,7 +28,7 @@ mypy-extensions==1.0.0
 numpy==2.1.1
 osqp==0.6.7.post1
 packaging==24.1
-pandas==2.2.2
+pandas==2.2.3
 pandas-stubs==2.2.2.240909
 pathspec==0.12.1
 peewee==3.17.6
@@ -55,4 +55,4 @@ typing_extensions==4.12.2
 tzdata==2024.1
 urllib3==2.2.3
 webencodings==0.5.1
-yfinance==0.2.43
+yfinance==0.2.44
