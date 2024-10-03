@@ -629,7 +629,6 @@ def main() -> None:
     # Define required configuration fields
     required_config_fields: List[str] = [
         "storage.fred_file_path",
-        "storage.recommendation_file_path",
         "api.fred_api_key",
         "allocations",
     ]

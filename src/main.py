@@ -58,7 +58,6 @@ def main(rebalancing_date: Optional[str] = None) -> None:
     # Define the required configuration fields
     required_config_fields = [
         "storage.fred_file_path",
-        "storage.recommendation_file_path",
         "api.fred_api_key",
         "allocations",  # Added allocations as a required field
     ]
