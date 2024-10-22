@@ -310,16 +310,19 @@ class DataFetcher(StorageMixin):
             if isinstance(obs, dict) and "date" in obs and "value" in obs:
                 value = obs["value"]
                 if value in ("NaN", "."):
-                    obs["value"] = None
+                    self.logger.debug(
+                        f"Skipping observation for {series_id} on {obs['date']} due to invalid value '{value}'."
+                    )
+                    continue
                 else:
                     try:
                         obs["value"] = float(value)
+                        valid_observations.append(obs)
                     except ValueError:
                         self.logger.warning(
-                            f"Invalid value format for series {series_id}: {value}. Setting to None."
+                            f"Invalid value format for series {series_id}: {value}. Skipping this observation."
                         )
-                        obs["value"] = None
-                valid_observations.append(obs)
+                        continue
             else:
                 self.logger.warning(
                     f"Invalid observation format for series {series_id}: {obs}"
